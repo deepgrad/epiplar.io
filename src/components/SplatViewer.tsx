@@ -9,6 +9,7 @@ interface SplatViewerProps {
 export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
+  const isDisposedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -16,60 +17,84 @@ export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
     if (!containerRef.current || !url) return;
 
     const container = containerRef.current;
+    isDisposedRef.current = false;
 
-    // Dispose previous viewer if it exists
-    if (viewerRef.current) {
-      try {
-        viewerRef.current.dispose();
-      } catch (e) {
-        // Ignore disposal errors
-      }
-      viewerRef.current = null;
+    // Clear container manually before creating new viewer
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
     }
 
     setLoading(true);
     setLoadError(null);
 
+    let viewer: any = null;
+
     // Create viewer and load scene
     const initViewer = async () => {
       try {
-        const viewer = new GaussianSplats3D.Viewer({
+        // Check if already disposed before creating
+        if (isDisposedRef.current) return;
+
+        viewer = new GaussianSplats3D.Viewer({
           'rootElement': container,
           'cameraUp': [0, 1, 0],
           'initialCameraPosition': [0, 1.5, 3],
           'initialCameraLookAt': [0, 0, 0],
           'gpuAcceleratedSort': true,
           'halfPrecisionCovariancesOnGPU': true,
+          // Disable shared memory to avoid CORS/worker issues
+          'sharedMemoryForWorkers': false,
         });
 
         viewerRef.current = viewer;
+
+        // Check again before loading scene
+        if (isDisposedRef.current) {
+          viewer.dispose();
+          return;
+        }
 
         await viewer.addSplatScene(url, {
           'showLoadingUI': false,
           'position': [0, 0, 0],
           'rotation': [0, 0, 0, 1],
-          'scale': [1, 1, 1]
+          'scale': [1, 1, 1],
+          'format': GaussianSplats3D.SceneFormat.Ply,
+          'splatAlphaRemovalThreshold': 1,
         });
+
+        // Check again before starting
+        if (isDisposedRef.current) {
+          viewer.dispose();
+          return;
+        }
 
         viewer.start();
         setLoading(false);
       } catch (err: any) {
-        console.error("Failed to load splat scene:", err);
-        setLoadError(err.message || "Failed to load Gaussian Splats");
-        setLoading(false);
+        if (!isDisposedRef.current) {
+          console.error("Failed to load splat scene:", err);
+          setLoadError(err.message || "Failed to load Gaussian Splats");
+          setLoading(false);
+        }
       }
     };
 
     initViewer();
 
     return () => {
+      isDisposedRef.current = true;
       if (viewerRef.current) {
         try {
           viewerRef.current.dispose();
         } catch (e) {
-          // Ignore disposal errors
+          // Ignore disposal errors - manually clean up DOM
         }
         viewerRef.current = null;
+      }
+      // Clean up container manually
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
       }
     };
   }, [url]);

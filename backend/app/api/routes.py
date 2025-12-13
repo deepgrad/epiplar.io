@@ -170,10 +170,15 @@ async def get_job_asset(job_id: str, file_path: str):
         ".mp4": "video/mp4",
     }.get(suffix, "application/octet-stream")
 
+    # Return with CORS headers for cross-origin embedding
     return FileResponse(
         str(asset_path),
         media_type=media_type,
         filename=asset_path.name,
+        headers={
+            "Cross-Origin-Resource-Policy": "cross-origin",
+            "Access-Control-Allow-Origin": "*",
+        },
     )
 
 @router.delete("/job/{job_id}")
