@@ -251,7 +251,7 @@ class DepthService:
                 ref_view_strategy="saddle_balanced",
                 # Export settings - let DA3 handle the GLB generation natively
                 export_dir=str(job_dir),
-                export_format="ply" if settings.export_format == "gs" else settings.export_format,
+                export_format=settings.export_format,
                 # GLB quality parameters
                 conf_thresh_percentile=settings.conf_thresh_percentile,
                 num_max_points=settings.num_max_points,
@@ -286,7 +286,7 @@ class DepthService:
 
             # DA3 exports to {export_dir}/scene.glb (or scene.ply, etc.)
             job_dir = settings.temp_dir / job_id
-            export_ext = "ply" if settings.export_format == "gs" else settings.export_format.split("-")[0]
+            export_ext = settings.export_format.split("-")[0]  # Handle "glb-feat_vis" -> "glb"
 
             # Check for exported files (DA3 may use different naming)
             possible_files = [
