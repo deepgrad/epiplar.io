@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Export settings - GLB point cloud only
     export_format: str = "glb"
-    show_cameras: bool = False  # Show camera positions in GLB
+    show_cameras: bool = True  # Show camera positions in GLB
 
     # LOD Configuration - progressive loading for large point clouds
     enable_lod: bool = True  # Feature flag for LOD generation
