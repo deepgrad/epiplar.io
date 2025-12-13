@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     conf_thresh_percentile: float = 30.0  # Lower = more points (less filtering)
 
     # Export settings
-    export_format: str = "gs"  # "glb", "ply", "gs", "gs_video"
+    export_format: str = "ply"  # "glb", "ply", "gs", "gs_video"
     show_cameras: bool = False  # Show camera positions in GLB
 
     temp_dir: Path = Path("/tmp/garaza")

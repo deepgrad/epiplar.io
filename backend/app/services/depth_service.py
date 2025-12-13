@@ -174,13 +174,20 @@ class DepthService:
     async def _export_room_mesh_asset(self, prediction, job_id: str) -> ModelAsset:
         """Export a unified room mesh for this job and return a ModelAsset descriptor."""
         job_dir = settings.temp_dir / job_id
-        out_filename = "room.glb"
+        
+        # If the requested format is 'gs' but we are falling back to TSDF, we must force GLB/PLY
+        # because TSDF cannot produce Gaussian Splats.
+        fallback_format = "glb"
+        out_filename = f"room.{fallback_format}"
         out_path = job_dir / out_filename
+        
+        logger.warning(f"Falling back to TSDF mesh export ({fallback_format}) because native export failed or wasn't found.")
         await asyncio.to_thread(self._export_tsdf_mesh_glb_sync, prediction, out_path)
+        
         return ModelAsset(
             filename=out_filename,
             url=f"/api/assets/{job_id}/{out_filename}",
-            format="glb",
+            format=fallback_format,
         )
 
     async def estimate_depth(
@@ -244,7 +251,7 @@ class DepthService:
                 ref_view_strategy="saddle_balanced",
                 # Export settings - let DA3 handle the GLB generation natively
                 export_dir=str(job_dir),
-                export_format=settings.export_format,
+                export_format="ply" if settings.export_format == "gs" else settings.export_format,
                 # GLB quality parameters
                 conf_thresh_percentile=settings.conf_thresh_percentile,
                 num_max_points=settings.num_max_points,
@@ -279,13 +286,15 @@ class DepthService:
 
             # DA3 exports to {export_dir}/scene.glb (or scene.ply, etc.)
             job_dir = settings.temp_dir / job_id
-            export_ext = settings.export_format.split("-")[0]  # Handle "glb-feat_vis" -> "glb"
+            export_ext = "ply" if settings.export_format == "gs" else settings.export_format.split("-")[0]
 
             # Check for exported files (DA3 may use different naming)
             possible_files = [
                 job_dir / f"scene.{export_ext}",
                 job_dir / f"output.{export_ext}",
                 job_dir / f"room.{export_ext}",
+                job_dir / "scene.ply", # Explicitly check for PLY if that's the GS format
+                job_dir / "scene.gs",
             ]
 
             exported_file = None
