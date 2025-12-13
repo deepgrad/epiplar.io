@@ -199,21 +199,38 @@ export default function VideoUpload({ onVideoSelect }: VideoUploadProps) {
   }
 
   return (
-    <div className="w-full min-h-[340px] lg:min-h-[400px] flex flex-col">
+    <div className="w-full min-h-[420px] sm:min-h-[480px] flex flex-col">
+      {/* Header */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center">
+              <svg className="w-4 h-4 text-brand-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground select-none">3D Reconstruction</h3>
+              <p className="text-[11px] text-muted-foreground">Upload or record a video of your room</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Mode Toggle */}
       {!previewUrl && (
-        <div className="flex justify-center mb-3">
-          <div className="inline-flex rounded-lg bg-muted p-1 border border-border/50">
+        <div className="flex justify-start mb-3">
+          <div className="inline-flex rounded-lg bg-accent p-1">
             <button
               onClick={() => switchMode('upload')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                 mode === 'upload'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <span className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
                 Upload
@@ -221,14 +238,14 @@ export default function VideoUpload({ onVideoSelect }: VideoUploadProps) {
             </button>
             <button
               onClick={() => switchMode('record')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                 mode === 'record'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <span className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
                 Record
@@ -246,45 +263,27 @@ export default function VideoUpload({ onVideoSelect }: VideoUploadProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={`
-            group relative cursor-pointer rounded-xl border-2 border-dashed flex-1
-            flex flex-col items-center justify-center
-            transition-all duration-300 hover-lift
+            group cursor-pointer rounded-xl border border-border flex-1
+            flex flex-col items-center justify-center min-h-[280px]
+            transition-all duration-200
             ${isDragging
-              ? 'border-brand bg-brand/10 scale-[1.02]'
-              : 'border-border hover:border-brand/50 hover:bg-muted/30'
+              ? 'border-brand bg-brand/5'
+              : 'hover:border-muted-foreground/30 hover:bg-accent/20'
             }
           `}
         >
-          <div className="flex flex-col items-center justify-center py-10 sm:py-14 px-6">
+          <div className="flex flex-col items-center justify-center">
             <div className={`
-              w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center mb-5
-              transition-all duration-300
-              ${isDragging ? 'bg-brand text-white scale-110' : 'bg-accent text-muted-foreground group-hover:bg-brand/20 group-hover:text-brand-300'}
+              w-12 h-12 rounded-lg flex items-center justify-center mb-3
+              transition-all duration-200
+              ${isDragging ? 'bg-brand text-white' : 'bg-accent text-muted-foreground'}
             `}>
-              <svg
-                className="w-6 h-6 sm:w-7 sm:h-7"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                />
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
             </div>
-
-            <h3 className="text-sm sm:text-base font-medium text-foreground mb-2 text-center">
-              Drop your video here
-            </h3>
-            <p className="text-muted-foreground text-xs sm:text-sm text-center mb-3">
-              or click to browse files
-            </p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground/60">
-              MP4, MOV, WebM
-            </p>
+            <p className="text-sm font-medium text-foreground mb-1">Drop your video here</p>
+            <p className="text-xs text-muted-foreground">or click to browse · MP4, MOV, WebM</p>
           </div>
 
           <input
@@ -299,49 +298,60 @@ export default function VideoUpload({ onVideoSelect }: VideoUploadProps) {
 
       {/* Record Mode */}
       {mode === 'record' && !previewUrl && (
-        <div className="rounded-xl border border-border bg-muted/30 flex-1 flex flex-col overflow-hidden">
-          {/* Camera Preview or Placeholder */}
-          <div className="flex-1 relative bg-black/90 overflow-hidden min-h-[180px]">
-            {recordingState === 'idle' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-                <div className="w-12 h-12 rounded-full bg-muted/80 flex items-center justify-center mb-3">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <p className="text-xs">Click below to enable camera</p>
-              </div>
-            )}
-
-            {recordingState === 'requesting' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-                <div className="w-6 h-6 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin mb-3" />
-                <p className="text-xs">Requesting camera access...</p>
-              </div>
-            )}
-
-            {cameraError && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 p-4">
-                <svg className="w-10 h-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <p className="text-xs text-center max-w-[200px]">{cameraError}</p>
-              </div>
-            )}
-
+        <div className="rounded-xl border border-border flex-1 flex flex-col min-h-[280px] overflow-hidden">
+          {/* Camera preview area */}
+          <div className="flex-1 relative bg-black/95 overflow-hidden flex items-center justify-center">
+            {/* Video element - always present but hidden when not active */}
             <video
               ref={videoRef}
               autoPlay
               muted
               playsInline
-              className={`w-full h-full object-cover ${
-                recordingState === 'ready' || recordingState === 'recording' ? 'block' : 'hidden'
+              className={`absolute inset-0 w-full h-full object-cover ${
+                recordingState === 'ready' || recordingState === 'recording' ? 'opacity-100' : 'opacity-0'
               }`}
             />
 
+            {/* Idle state overlay */}
+            {recordingState === 'idle' && !cameraError && (
+              <div className="flex flex-col items-center justify-center z-10">
+                <div className="w-12 h-12 rounded-lg bg-muted/80 flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Record a video</p>
+                <p className="text-xs text-muted-foreground/70">Click below to enable camera</p>
+              </div>
+            )}
+
+            {/* Requesting state overlay */}
+            {recordingState === 'requesting' && (
+              <div className="flex flex-col items-center justify-center z-10">
+                <div className="w-12 h-12 rounded-lg bg-muted/80 flex items-center justify-center mb-3">
+                  <div className="w-5 h-5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Requesting access</p>
+                <p className="text-xs text-muted-foreground/70">Please allow camera permission</p>
+              </div>
+            )}
+
+            {/* Error state overlay */}
+            {cameraError && (
+              <div className="flex flex-col items-center justify-center px-4 z-10">
+                <div className="w-12 h-12 rounded-lg bg-red-500/10 flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-red-400 mb-1">Camera error</p>
+                <p className="text-xs text-muted-foreground/70 text-center">{cameraError}</p>
+              </div>
+            )}
+
             {/* Recording indicator */}
             {recordingState === 'recording' && (
-              <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-red-500/90 rounded-full">
+              <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-red-500/90 rounded-full z-20">
                 <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
                 <span className="text-white text-sm font-medium">{formatTime(recordingTime)}</span>
               </div>
@@ -349,7 +359,7 @@ export default function VideoUpload({ onVideoSelect }: VideoUploadProps) {
           </div>
 
           {/* Controls */}
-          <div className="p-3 flex justify-center gap-3 bg-muted/50 border-t border-border/50">
+          <div className="p-3 flex justify-center gap-3 border-t border-border/50">
             {recordingState === 'idle' && !cameraError && (
               <button
                 onClick={requestCamera}

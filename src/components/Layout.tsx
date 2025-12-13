@@ -20,12 +20,12 @@ export default function Layout({ children }: LayoutProps) {
       {/* Header */}
       <header className="border-b border-border/40 glass sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 sm:gap-3">
-            <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-8 h-8 sm:w-9 sm:h-9" />
+          <Link to="/" className="flex items-center gap-2 sm:gap-3 select-none">
+            <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-8 h-8 sm:w-9 sm:h-9 pointer-events-none" draggable="false" />
             <span className="text-base sm:text-lg font-semibold text-foreground tracking-tight">epipar.io</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-6 lg:gap-8">
+          <nav className="hidden md:flex items-center gap-6 lg:gap-8 select-none">
             <Link
               to="/"
               className={`text-sm font-medium transition-colors link-underline ${
@@ -203,8 +203,8 @@ export default function Layout({ children }: LayoutProps) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 mb-8">
             {/* Brand */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
-                <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-6 h-6" />
+              <div className="flex items-center gap-2 mb-3 select-none">
+                <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-6 h-6 pointer-events-none" draggable="false" />
                 <span className="text-sm font-semibold text-foreground">epipar.io</span>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">

@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
 import { searchFurniture, getFurnitureFilters, FurnitureProduct, FilterOption } from '../services/api'
 
+// Get flag image URL from CDN (works on all platforms including Windows)
+function getFlagUrl(countryCode: string): string {
+  if (!countryCode || countryCode.length !== 2) return ''
+  return `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png`
+}
+
 // Product image component with loading state and fallback
 function ProductImage({ url, alt }: { url?: string; alt: string }) {
   const [hasError, setHasError] = useState(false)
@@ -48,6 +54,7 @@ export default function FurnitureSearch({ onProductSelect }: FurnitureSearchProp
   const [hasSearched, setHasSearched] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [userCountry, setUserCountry] = useState<string | undefined>()
+  const [userCountryCode, setUserCountryCode] = useState<string | undefined>()
   const [availableBrands, setAvailableBrands] = useState<FilterOption[]>([])
   const [availableCountries, setAvailableCountries] = useState<FilterOption[]>([])
   const [filters, setFilters] = useState({
@@ -74,7 +81,8 @@ export default function FurnitureSearch({ onProductSelect }: FurnitureSearchProp
       .then(data => {
         if (data.country_name) {
           setUserCountry(data.country_name)
-          console.log('User country detected:', data.country_name)
+          setUserCountryCode(data.country_code)
+          console.log('User country detected:', data.country_name, data.country_code)
         }
       })
       .catch(err => console.error('Failed to detect location:', err))
@@ -135,20 +143,33 @@ export default function FurnitureSearch({ onProductSelect }: FurnitureSearchProp
   }
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full min-h-[420px] sm:min-h-[480px] flex flex-col">
       {/* Header */}
       <div className="mb-4">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center">
-            <svg className="w-4 h-4 text-brand-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center">
+              <svg className="w-4 h-4 text-brand-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground select-none">Furniture Search</h3>
+              <p className="text-[11px] text-muted-foreground">
+                Find furniture with AI{userCountry ? ` · ${userCountry}` : ''}
+              </p>
+            </div>
           </div>
-          <h3 className="text-sm font-semibold text-foreground">Furniture Search</h3>
+          {userCountryCode && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-muted rounded-md" title={`Boosting results from ${userCountry}`}>
+              <img
+                src={getFlagUrl(userCountryCode)}
+                alt={userCountry || ''}
+                className="w-6 h-4 object-cover rounded-sm"
+              />
+            </div>
+          )}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Describe what you're looking for using natural language
-        </p>
       </div>
 
       {/* Search Input */}
