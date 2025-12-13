@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { DepthEstimationResult } from '../services/depthEstimation'
 import ModelViewer from './ModelViewer'
+import SplatViewer from './SplatViewer'
 import DepthMapViewer from './DepthMapViewer'
 import { apiUrl, ModelAsset } from '../services/api'
 
@@ -84,7 +85,11 @@ export default function ResultsPreview({
         {viewMode === 'model' && (
           <div className="aspect-video">
             {modelAsset?.url ? (
-              <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+              (['gs', 'ply', 'splat'].includes(modelAsset.format || '')) ? (
+                <SplatViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+              ) : (
+                <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+              )
             ) : (
               <div className="w-full h-full min-h-[300px] flex items-center justify-center text-slate-500">
                 No 3D model was generated for this run.

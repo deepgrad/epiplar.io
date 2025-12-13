@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     conf_thresh_percentile: float = 30.0  # Lower = more points (less filtering)
 
     # Export settings
-    export_format: str = "glb"  # "glb", "ply", "gs", "gs_video"
-    show_cameras: bool = True  # Show camera positions in GLB
+    export_format: str = "gs"  # "glb", "ply", "gs", "gs_video"
+    show_cameras: bool = False  # Show camera positions in GLB
 
     temp_dir: Path = Path("/tmp/garaza")
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
