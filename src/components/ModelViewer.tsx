@@ -53,7 +53,7 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     const height = container.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1220);
+    scene.background = new THREE.Color(0x4a3f99); // Brand indigo background
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.01, 10_000);
@@ -81,10 +81,7 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     dir.position.set(3, 5, 2);
     scene.add(dir);
 
-    // Reference grid
-    const grid = new THREE.GridHelper(10, 20, 0x334155, 0x1f2937);
-    grid.position.y = 0;
-    scene.add(grid);
+    // Grid removed - model should fill the screen
 
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -172,16 +169,20 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
           sceneRef.current!.add(root);
           modelRef.current = root;
 
-          // Center model + fit camera (only for first load)
+          // Center model + fit camera to fill screen (only for first load)
           if (isFirstLoad) {
             const box = new THREE.Box3().setFromObject(root);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             root.position.sub(center);
 
+            // Calculate distance to fit model in viewport
             const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const distance = maxDim * 1.2; // Closer to fill screen better
+            
             const cam = cameraRef.current!;
-            cam.position.set(0, maxDim * 0.5, maxDim * 1.8);
+            // Position camera to view the model from an angle
+            cam.position.set(distance * 0.7, distance * 0.5, distance * 0.7);
             cam.lookAt(0, 0, 0);
             controlsRef.current!.target.set(0, 0, 0);
             controlsRef.current!.update();

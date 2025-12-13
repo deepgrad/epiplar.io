@@ -604,27 +604,9 @@ class DepthService:
                     except Exception as e:
                         logger.exception(f"Both DA3 export and TSDF fallback failed: {e}")
 
-            # Convert to serializable format
+            # Skip depth frame creation - client only needs 3D model
+            # This optimizes backend speed by not encoding/transmitting depth maps
             depth_frames = []
-            for i in range(len(frames)):
-                depth_map = depth_maps[i]
-
-                # Normalize depth to 0-1 range
-                depth_min = depth_map.min()
-                depth_max = depth_map.max()
-                if depth_max > depth_min:
-                    depth_normalized = (depth_map - depth_min) / (depth_max - depth_min)
-                else:
-                    depth_normalized = np.zeros_like(depth_map)
-
-                frame_data = DepthFrame(
-                    frame_index=i,
-                    depth_map_b64=self._encode_array(depth_normalized),
-                    width=depth_map.shape[1],
-                    height=depth_map.shape[0],
-                    confidence_b64=self._encode_array(conf_maps[i]) if conf_maps is not None else None,
-                )
-                depth_frames.append(frame_data)
 
             # Camera parameters if available
             camera_params = None
