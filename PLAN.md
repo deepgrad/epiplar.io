@@ -1,581 +1,628 @@
-# Epipar.io Optimization & NeRFiller Integration Plan
+# FastAPI Optimization Plan
 
 ## Overview
 
-This plan addresses two key improvements:
-1. **Performance**: Speed up large GLB rendering in browser
-2. **Quality**: Integrate NeRFiller for 3D scene completion
+This document outlines optimization recommendations for the FastAPI application based on codebase analysis.
 
 ---
 
-## Part 1: GLB Performance Optimization
+## 1. Response Compression
 
-### Problem
-- Current GLB files are 10-50MB with up to 10M points
-- Browser rendering becomes laggy with large point clouds
-- Three.js struggles with millions of points
+### Current State
 
-### Solution A: Level of Detail (LOD) System
+- No response compression middleware is configured
+- Large responses (GLB files, depth maps, embeddings) are sent uncompressed
 
-Generate multiple quality levels and stream progressively.
+### Recommendations
 
-#### Backend Changes (`backend/app/services/depth_service.py`)
+- **Add GZip compression middleware** for all responses
+- **Use Brotli compression** for better compression ratios (optional, requires additional dependency)
+- **Exclude already-compressed files** (e.g., GLB files that may already be compressed)
 
-```python
-async def export_multi_lod_glb(self, prediction, job_id: str) -> list[ModelAsset]:
-    """Export GLB at multiple LOD levels for progressive loading."""
-    lod_configs = [
-        {"name": "preview", "max_points": 100_000, "conf_thresh": 20.0},
-        {"name": "medium", "max_points": 1_000_000, "conf_thresh": 10.0},
-        {"name": "full", "max_points": 10_000_000, "conf_thresh": 3.0},
-    ]
-
-    assets = []
-    for config in lod_configs:
-        # Export with different quality settings
-        glb_path = await self._export_glb_with_config(prediction, job_id, config)
-        assets.append(ModelAsset(
-            filename=f"scene_{config['name']}.glb",
-            url=f"/api/assets/{job_id}/scene_{config['name']}.glb",
-            format="glb",
-            lod_level=config['name'],
-        ))
-    return assets
-```
-
-#### Frontend Changes (`src/components/ModelViewer.tsx`)
-
-```typescript
-// Progressive LOD loading
-const [currentLOD, setCurrentLOD] = useState<'preview' | 'medium' | 'full'>('preview');
-
-useEffect(() => {
-  // Load preview immediately
-  loadGLB(assets.preview).then(() => {
-    // Load medium in background
-    loadGLB(assets.medium).then(() => {
-      setCurrentLOD('medium');
-      // Load full quality last
-      loadGLB(assets.full).then(() => setCurrentLOD('full'));
-    });
-  });
-}, [assets]);
-```
-
-### Solution B: GPU Instancing & Octree Culling
-
-Use Three.js optimizations for large point clouds.
-
-#### Implementation (`src/components/PointCloudViewer.tsx`)
-
-```typescript
-import { Octree } from 'three/examples/jsm/math/Octree';
-
-// Use InstancedBufferGeometry for better performance
-const geometry = new THREE.InstancedBufferGeometry();
-
-// Frustum culling with octree
-const octree = new Octree();
-octree.fromGraphNode(pointCloud);
-
-// Only render visible points
-function updateVisiblePoints(camera: THREE.Camera) {
-  const frustum = new THREE.Frustum();
-  frustum.setFromProjectionMatrix(
-    camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse)
-  );
-  // Cull points outside frustum
-}
-```
-
-### Solution C: WebGPU Renderer (Future)
-
-Three.js r150+ supports WebGPU for 10x performance.
-
-```typescript
-import { WebGPURenderer } from 'three/webgpu';
-
-// Check WebGPU support
-if (navigator.gpu) {
-  const renderer = new WebGPURenderer();
-  await renderer.init();
-}
-```
-
-### Solution D: Draco/Meshopt Compression
-
-Compress GLB files for faster download.
-
-#### Backend (`backend/app/services/depth_service.py`)
+### Implementation
 
 ```python
-import trimesh
+from fastapi.middleware.gzip import GZipMiddleware
 
-def compress_glb(input_path: Path, output_path: Path):
-    """Compress GLB with Draco compression."""
-    mesh = trimesh.load(input_path)
-    mesh.export(
-        output_path,
-        file_type='glb',
-        resolver=None,
-        include_normals=True,
-        # Enable Draco compression
-        draco_compression=True,
-        draco_compression_level=7,
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses > 1KB
+```
+
+### Expected Impact
+
+- **30-70% reduction** in response sizes for JSON/text responses
+- Faster API response times, especially for mobile/slow connections
+- Reduced bandwidth costs
+
+---
+
+## 2. Database Connection Pooling
+
+### Current State
+
+```python
+engine = create_async_engine(DATABASE_URL, echo=False)
+```
+
+- No connection pool configuration
+- Default pool size may be insufficient for concurrent requests
+
+### Recommendations
+
+- **Configure connection pool size** based on expected load
+- **Set pool timeout** to prevent connection exhaustion
+- **Enable pool pre-ping** to detect stale connections
+- **Configure max overflow** for burst traffic
+
+### Implementation
+
+```python
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=10,              # Base pool size
+    max_overflow=20,           # Additional connections during bursts
+    pool_pre_ping=True,        # Verify connections before use
+    pool_recycle=3600,         # Recycle connections after 1 hour
+    connect_args={"check_same_thread": False}  # For SQLite
+)
+```
+
+### Expected Impact
+
+- **Better handling of concurrent requests**
+- **Reduced connection errors** under load
+- **Improved response times** for database operations
+
+---
+
+## 3. Database Indexes
+
+### Current State
+
+- Basic indexes exist on `email`, `username` (unique constraints)
+- No indexes on frequently queried fields like:
+  - `UserActivity.user_id` (for filtering activities)
+  - `UserActivity.created_at` (for time-based queries)
+  - `User.plan` (for plan-based filtering)
+
+### Recommendations
+
+- **Add composite indexes** for common query patterns
+- **Index foreign keys** for faster joins
+- **Index timestamp fields** used in WHERE clauses
+
+### Implementation
+
+```python
+# In models.py, add indexes:
+class UserActivity(Base):
+    # ... existing fields ...
+
+    __table_args__ = (
+        Index('idx_user_activity_user_created', 'user_id', 'created_at'),
+        Index('idx_user_activity_action', 'action'),
+    )
+
+class User(Base):
+    # ... existing fields ...
+
+    __table_args__ = (
+        Index('idx_user_plan_active', 'plan', 'is_active'),
     )
 ```
 
-### Recommended Implementation Order
+### Expected Impact
 
-1. **LOD System** (highest impact, moderate effort)
-2. **Draco Compression** (easy, reduces download time)
-3. **Frustum Culling** (moderate effort, helps with rendering)
-4. **WebGPU** (future, when browser support improves)
+- **50-90% faster** queries on indexed fields
+- **Reduced database load** for common queries
+- **Better scalability** as data grows
 
 ---
 
-## Part 2: NeRFiller Integration
+## 4. Caching Strategy
 
-### What is NeRFiller?
+### Current State
 
-[NeRFiller](https://github.com/ethanweber/nerfiller) (CVPR 2024) completes missing 3D regions using 2D inpainting diffusion models. Key insight: arranging images in 2x2 grids produces more 3D-consistent inpaints.
+- **Furniture search service**: Loads entire CSV and embeddings into memory on first request
+- **No caching** for:
+  - User authentication lookups
+  - Furniture search results
+  - Product lookups by ASIN/brand
+  - Job status queries
 
-### Architecture
+### Recommendations
 
-```
-Current Pipeline:
-  Video → Frames → DA3 → GLB Point Cloud (may have gaps)
+#### A. In-Memory Caching (FastAPI-Cache2 or cachetools)
 
-New Pipeline:
-  Video → Frames → DA3 → Point Cloud + Depth + Camera Poses
-                              ↓
-                    Identify incomplete regions
-                              ↓
-                    NeRFiller inpainting
-                              ↓
-                    Complete 3D scene (NeRF or GLB)
-```
+- Cache furniture search embeddings (already in memory, but could be optimized)
+- Cache user lookups by ID/email (TTL: 5-15 minutes)
+- Cache product lookups by ASIN (TTL: 1 hour)
 
-### Prerequisites
+#### B. Redis Caching (Production)
 
-```bash
-# Install Nerfstudio (required by NeRFiller)
-pip install nerfstudio
+- Cache job status queries (TTL: 30 seconds)
+- Cache furniture search results (TTL: 1 hour)
+- Cache user sessions/tokens (if implementing token blacklisting)
 
-# Clone and install NeRFiller
-git clone https://github.com/ethanweber/nerfiller.git
-cd nerfiller
-pip install -e .
-```
-
-### Backend Implementation
-
-#### New File: `backend/app/services/nerfiller_service.py`
+### Implementation Example
 
 ```python
-import subprocess
-import json
-from pathlib import Path
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from fastapi_cache.decorator import cache
+
+@router.get("/furniture/product/{asin}")
+@cache(expire=3600)  # Cache for 1 hour
+async def get_product(asin: str):
+    # ... existing code ...
+```
+
+### Expected Impact
+
+- **80-95% reduction** in database queries for cached endpoints
+- **Sub-millisecond response times** for cached data
+- **Reduced load** on database and ML models
+
+---
+
+## 5. Database Query Optimization
+
+### Current State
+
+- Multiple separate queries in `auth_service.py`:
+  - `get_user_by_email()` and `get_user_by_username()` are separate queries
+  - `get_current_user()` makes a separate query after JWT validation
+  - User activities are loaded separately (if needed)
+
+### Recommendations
+
+- **Combine queries** where possible
+- **Use select_related/joinedload** for eager loading relationships
+- **Batch queries** for multiple lookups
+- **Add query result caching** for frequently accessed data
+
+### Implementation
+
+```python
+# Instead of multiple queries:
+async def get_user_by_email_or_username(db: AsyncSession, email: str = None, username: str = None):
+    query = select(User)
+    if email:
+        query = query.where(User.email == email)
+    elif username:
+        query = query.where(User.username == username)
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+# Eager load relationships when needed:
+from sqlalchemy.orm import selectinload
+
+async def get_user_with_activities(db: AsyncSession, user_id: int):
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.activities))
+        .where(User.id == user_id)
+    )
+    return result.scalar_one_or_none()
+```
+
+### Expected Impact
+
+- **30-50% reduction** in database round trips
+- **Faster response times** for user-related endpoints
+- **Reduced database connection usage**
+
+---
+
+## 6. Response Model Optimization
+
+### Current State
+
+- Full model serialization for all responses
+- Large depth maps encoded as base64 in responses
+- No pagination for list endpoints
+
+### Recommendations
+
+- **Use response_model_exclude** to exclude unnecessary fields
+- **Implement pagination** for list endpoints (jobs, activities)
+- **Stream large files** instead of loading into memory
+- **Use response_model_exclude_none** to omit null values
+
+### Implementation
+
+```python
+from fastapi import Query
 from typing import Optional
-import numpy as np
 
-from ..models.schemas import CameraParameters, ProcessingResult
-
-class NerFillerService:
-    """Service for NeRFiller 3D scene completion."""
-
-    def __init__(self):
-        self.nerfiller_path = Path("/opt/nerfiller")  # Or configurable
-
-    async def prepare_nerfstudio_dataset(
-        self,
-        frames: list[np.ndarray],
-        depth_maps: np.ndarray,
-        camera_params: CameraParameters,
-        job_dir: Path,
-    ) -> Path:
-        """
-        Convert DA3 output to Nerfstudio dataset format.
-
-        Nerfstudio expects:
-        - images/ folder with numbered frames
-        - transforms.json with camera poses
-        - Optional: depth/ folder with depth maps
-        """
-        dataset_dir = job_dir / "nerfstudio_data"
-        images_dir = dataset_dir / "images"
-        depth_dir = dataset_dir / "depth"
-
-        images_dir.mkdir(parents=True, exist_ok=True)
-        depth_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save frames as images
-        import cv2
-        for i, frame in enumerate(frames):
-            cv2.imwrite(str(images_dir / f"frame_{i:04d}.png"),
-                       cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-
-            # Save depth maps
-            np.save(depth_dir / f"frame_{i:04d}.npy", depth_maps[i])
-
-        # Create transforms.json (Nerfstudio camera format)
-        transforms = self._create_transforms_json(
-            frames, camera_params, images_dir
-        )
-
-        with open(dataset_dir / "transforms.json", "w") as f:
-            json.dump(transforms, f, indent=2)
-
-        return dataset_dir
-
-    def _create_transforms_json(
-        self,
-        frames: list[np.ndarray],
-        camera_params: CameraParameters,
-        images_dir: Path,
-    ) -> dict:
-        """Create Nerfstudio-compatible transforms.json."""
-        h, w = frames[0].shape[:2]
-
-        # Get intrinsics (assume same for all frames)
-        K = np.array(camera_params.intrinsics[0])
-        fx, fy = K[0, 0], K[1, 1]
-        cx, cy = K[0, 2], K[1, 2]
-
-        frames_data = []
-        for i in range(len(frames)):
-            # Convert extrinsics to Nerfstudio format (camera-to-world)
-            ext = np.array(camera_params.extrinsics[i])
-            if ext.shape == (3, 4):
-                ext = np.vstack([ext, [0, 0, 0, 1]])
-
-            # Invert to get camera-to-world
-            c2w = np.linalg.inv(ext)
-
-            frames_data.append({
-                "file_path": f"images/frame_{i:04d}.png",
-                "transform_matrix": c2w.tolist(),
-            })
-
-        return {
-            "camera_model": "OPENCV",
-            "fl_x": float(fx),
-            "fl_y": float(fy),
-            "cx": float(cx),
-            "cy": float(cy),
-            "w": int(w),
-            "h": int(h),
-            "frames": frames_data,
-        }
-
-    async def identify_incomplete_regions(
-        self,
-        depth_maps: np.ndarray,
-        confidence_maps: Optional[np.ndarray],
-    ) -> np.ndarray:
-        """
-        Identify regions that need inpainting.
-
-        Returns binary mask where 1 = needs inpainting.
-        """
-        masks = []
-
-        for i in range(len(depth_maps)):
-            mask = np.zeros_like(depth_maps[i], dtype=np.uint8)
-
-            # Mark low-confidence regions
-            if confidence_maps is not None:
-                mask[confidence_maps[i] < 0.3] = 1
-
-            # Mark regions with invalid depth
-            mask[~np.isfinite(depth_maps[i])] = 1
-            mask[depth_maps[i] <= 0] = 1
-
-            # Dilate mask to ensure smooth transitions
-            import cv2
-            kernel = np.ones((5, 5), np.uint8)
-            mask = cv2.dilate(mask, kernel, iterations=2)
-
-            masks.append(mask)
-
-        return np.array(masks)
-
-    async def run_nerfiller(
-        self,
-        dataset_dir: Path,
-        masks: np.ndarray,
-        output_dir: Path,
-    ) -> Path:
-        """
-        Run NeRFiller inpainting on the dataset.
-
-        NeRFiller process:
-        1. Train initial NeRF on visible regions
-        2. Use Joint Multi-View Inpainting on masked regions
-        3. Iteratively refine with Dataset Update strategy
-        """
-        # Save masks
-        masks_dir = dataset_dir / "masks"
-        masks_dir.mkdir(exist_ok=True)
-        for i, mask in enumerate(masks):
-            import cv2
-            cv2.imwrite(str(masks_dir / f"frame_{i:04d}.png"), mask * 255)
-
-        # Run NeRFiller training
-        # This uses Nerfstudio's training infrastructure
-        cmd = [
-            "ns-train", "nerfiller",
-            "--data", str(dataset_dir),
-            "--output-dir", str(output_dir),
-            "--pipeline.model.use-masks", "True",
-            "--pipeline.model.mask-dir", str(masks_dir),
-            # NeRFiller-specific settings
-            "--pipeline.model.inpaint-method", "joint-multiview",
-            "--pipeline.model.dataset-update", "True",
-            "--max-num-iterations", "30000",
-        ]
-
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            raise RuntimeError(f"NeRFiller failed: {stderr.decode()}")
-
-        return output_dir / "nerfiller" / "exports"
-
-    async def export_completed_scene(
-        self,
-        nerfiller_output: Path,
-        job_id: str,
-    ) -> Path:
-        """Export the completed NeRF scene to GLB/PLY."""
-        # Use Nerfstudio's export functionality
-        cmd = [
-            "ns-export", "pointcloud",
-            "--load-config", str(nerfiller_output / "config.yml"),
-            "--output-dir", str(nerfiller_output / "export"),
-            "--num-points", "5000000",
-            "--remove-outliers", "True",
-            "--use-bounding-box", "True",
-        ]
-
-        process = await asyncio.create_subprocess_exec(*cmd)
-        await process.communicate()
-
-        # Convert to GLB
-        ply_path = nerfiller_output / "export" / "point_cloud.ply"
-        glb_path = nerfiller_output / "export" / "scene_complete.glb"
-
-        import trimesh
-        cloud = trimesh.load(ply_path)
-        cloud.export(glb_path)
-
-        return glb_path
-
-
-nerfiller_service = NerFillerService()
-```
-
-#### Update: `backend/app/api/routes.py`
-
-```python
-from ..services.nerfiller_service import nerfiller_service
-
-@router.post("/inpaint/{job_id}")
-async def inpaint_scene(
-    job_id: str,
-    background_tasks: BackgroundTasks,
+@router.get("/admin/jobs")
+async def list_jobs_on_disk(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100)
 ):
-    """Run NeRFiller to complete missing scene regions."""
-    if job_id not in jobs:
-        raise HTTPException(404, "Job not found")
+    jobs = get_job_directories()
+    start = (page - 1) * page_size
+    end = start + page_size
 
-    job = jobs[job_id]
-    if job["status"] != "completed":
-        raise HTTPException(400, "Job must be completed before inpainting")
+    return {
+        "jobs": jobs[start:end],
+        "count": len(jobs),
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (len(jobs) + page_size - 1) // page_size
+    }
 
-    # Start inpainting in background
-    background_tasks.add_task(
-        run_nerfiller_task,
-        job_id,
-        job["result"],
-    )
-
-    return {"status": "inpainting", "job_id": job_id}
-
-async def run_nerfiller_task(job_id: str, result: dict):
-    """Background task for NeRFiller inpainting."""
-    try:
-        jobs[job_id]["status"] = "inpainting"
-
-        # Prepare dataset
-        job_dir = settings.temp_dir / job_id
-        dataset_dir = await nerfiller_service.prepare_nerfstudio_dataset(
-            frames=...,  # Load from saved frames
-            depth_maps=...,  # Load from result
-            camera_params=result["camera_params"],
-            job_dir=job_dir,
-        )
-
-        # Identify regions to inpaint
-        masks = await nerfiller_service.identify_incomplete_regions(
-            depth_maps=...,
-            confidence_maps=...,
-        )
-
-        # Run NeRFiller
-        output_dir = job_dir / "nerfiller_output"
-        nerfiller_output = await nerfiller_service.run_nerfiller(
-            dataset_dir, masks, output_dir
-        )
-
-        # Export completed scene
-        glb_path = await nerfiller_service.export_completed_scene(
-            nerfiller_output, job_id
-        )
-
-        # Update job result
-        jobs[job_id]["result"]["inpainted_model"] = {
-            "filename": "scene_complete.glb",
-            "url": f"/api/assets/{job_id}/nerfiller_output/export/scene_complete.glb",
-            "format": "glb",
-        }
-        jobs[job_id]["status"] = "completed"
-
-    except Exception as e:
-        jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = str(e)
+# Exclude large fields from responses:
+@router.get("/result/{job_id}", response_model_exclude={"frames"})
+async def get_result_summary(job_id: str):
+    # Return summary without full depth frames
+    ...
 ```
 
-### Frontend Implementation
+### Expected Impact
 
-#### Update: `src/services/api.ts`
+- **50-80% reduction** in response payload sizes
+- **Faster JSON serialization**
+- **Better mobile/bandwidth-limited performance**
 
-```typescript
-export async function startInpainting(jobId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/inpaint/${jobId}`, {
-    method: 'POST',
-  });
+---
 
-  if (!response.ok) {
-    throw new Error('Failed to start inpainting');
-  }
-}
+## 7. Request Timeout and Rate Limiting
 
-export interface ProcessingResult {
-  // ... existing fields
-  inpainted_model?: ModelAsset;  // NEW: completed scene after NeRFiller
-}
-```
+### Current State
 
-#### Update: `src/components/ResultsPreview.tsx`
+- No request timeout configuration
+- No rate limiting middleware
+- Large file uploads could block other requests
 
-```tsx
-// Add inpainting button and status
-const [isInpainting, setIsInpainting] = useState(false);
+### Recommendations
 
-const handleInpaint = async () => {
-  setIsInpainting(true);
-  await startInpainting(result.job_id);
-  // Poll for completion or use WebSocket
-};
+- **Add request timeout middleware** (30-60 seconds for most endpoints)
+- **Implement rate limiting** per IP/user
+- **Separate rate limits** for different endpoint types:
+  - Auth endpoints: 5 requests/minute
+  - Upload endpoints: 2 requests/minute
+  - Search endpoints: 30 requests/minute
+  - General API: 100 requests/minute
 
-return (
-  <div>
-    {/* Existing preview */}
-
-    {!result.inpainted_model && (
-      <button onClick={handleInpaint} disabled={isInpainting}>
-        {isInpainting ? 'Inpainting...' : 'Fill Missing Regions (NeRFiller)'}
-      </button>
-    )}
-
-    {result.inpainted_model && (
-      <div>
-        <h3>Completed Scene</h3>
-        <ModelViewer asset={result.inpainted_model} />
-      </div>
-    )}
-  </div>
-);
-```
-
-### Docker Setup
-
-#### Update: `backend/Dockerfile`
-
-```dockerfile
-# Add Nerfstudio and NeRFiller
-RUN pip install nerfstudio
-
-# Clone and install NeRFiller
-RUN git clone https://github.com/ethanweber/nerfiller.git /opt/nerfiller && \
-    cd /opt/nerfiller && \
-    pip install -e .
-
-# Install additional dependencies
-RUN pip install trimesh pyglet
-```
-
-### Configuration
-
-#### Update: `backend/app/config.py`
+### Implementation
 
 ```python
-class Settings(BaseSettings):
-    # ... existing settings
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
-    # NeRFiller settings
-    enable_nerfiller: bool = True
-    nerfiller_iterations: int = 30000
-    nerfiller_inpaint_method: str = "joint-multiview"  # or "individual"
-    nerfiller_dataset_update: bool = True
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@router.post("/upload")
+@limiter.limit("2/minute")
+async def upload_video(...):
+    ...
+
+@router.post("/auth/login")
+@limiter.limit("5/minute")
+async def login(...):
+    ...
 ```
 
----
+### Expected Impact
 
-## Implementation Timeline
-
-### Phase 1: Performance (Week 1)
-1. Implement LOD system (backend + frontend)
-2. Add Draco compression
-3. Test with large GLB files
-
-### Phase 2: NeRFiller Core (Week 2)
-1. Set up Nerfstudio + NeRFiller in Docker
-2. Implement dataset conversion
-3. Implement mask generation
-
-### Phase 3: NeRFiller Integration (Week 3)
-1. Add inpainting API endpoint
-2. Implement background task
-3. Add frontend UI for inpainting
-
-### Phase 4: Polish (Week 4)
-1. WebSocket progress for NeRFiller
-2. Error handling and recovery
-3. Documentation and testing
+- **Protection against abuse** and DoS attacks
+- **Fair resource allocation** among users
+- **Prevents resource exhaustion** from runaway requests
 
 ---
 
-## Resources
+## 8. Background Task Queue
 
-- [NeRFiller Paper](https://arxiv.org/abs/2312.04560)
-- [NeRFiller GitHub](https://github.com/ethanweber/nerfiller)
-- [Nerfstudio Documentation](https://docs.nerf.studio/)
-- [Three.js LOD](https://threejs.org/docs/#api/en/objects/LOD)
-- [Draco Compression](https://google.github.io/draco/)
+### Current State
+
+- Uses FastAPI `BackgroundTasks` for video processing
+- Jobs stored in-memory dictionary (lost on restart)
+- No task persistence or retry mechanism
+
+### Recommendations
+
+- **Use Celery or RQ** for production background tasks
+- **Persist job state** in database instead of memory
+- **Implement task retry logic** with exponential backoff
+- **Add job priority queues** (high priority for paid users)
+
+### Implementation Options
+
+#### Option A: Database-backed jobs (Simpler)
+
+```python
+# Create Job model in database
+class Job(Base):
+    __tablename__ = "jobs"
+    id = Column(String, primary_key=True)
+    status = Column(String)  # uploaded, processing, completed, failed
+    user_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # ... other fields
+
+# Store jobs in database instead of dict
+```
+
+#### Option B: Celery (Production-ready)
+
+```python
+from celery import Celery
+
+celery_app = Celery("garaza", broker="redis://localhost:6379/0")
+
+@celery_app.task(bind=True, max_retries=3)
+def process_video_task(self, job_id: str, video_path: str):
+    try:
+        # ... processing logic ...
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+```
+
+### Expected Impact
+
+- **Job persistence** across server restarts
+- **Better error handling** and retry logic
+- **Scalability** with multiple workers
+- **Monitoring** and job status tracking
+
+---
+
+## 9. Async File Operations
+
+### Current State
+
+- Some file operations may be blocking
+- Large file uploads could benefit from streaming
+
+### Recommendations
+
+- **Use `aiofiles`** for all file I/O operations (already in requirements)
+- **Stream large file uploads** instead of loading into memory
+- **Use async file deletion** for cleanup operations
+
+### Implementation
+
+```python
+import aiofiles
+from fastapi import UploadFile
+
+async def save_upload_file_async(file: UploadFile, dest: Path):
+    async with aiofiles.open(dest, 'wb') as f:
+        while chunk := await file.read(8192):  # 8KB chunks
+            await f.write(chunk)
+```
+
+### Expected Impact
+
+- **Non-blocking I/O** operations
+- **Better concurrency** for multiple uploads
+- **Reduced memory usage** for large files
+
+---
+
+## 10. Response Headers and Caching
+
+### Current State
+
+- No cache headers for static assets
+- No ETag support for conditional requests
+
+### Recommendations
+
+- **Add cache headers** for static assets (GLB files, images)
+- **Implement ETag support** for conditional GET requests
+- **Add CORS preflight caching** headers
+
+### Implementation
+
+```python
+from fastapi.responses import FileResponse
+from pathlib import Path
+import hashlib
+
+@router.get("/assets/{job_id}/{file_path:path}")
+async def get_job_asset(job_id: str, file_path: str):
+    asset_path = (job_dir / file_path).resolve()
+
+    # Generate ETag
+    file_hash = hashlib.md5(asset_path.read_bytes()).hexdigest()
+    etag = f'"{file_hash}"'
+
+    # Check If-None-Match header
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=304)
+
+    return FileResponse(
+        str(asset_path),
+        headers={
+            "ETag": etag,
+            "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+            "Cross-Origin-Resource-Policy": "cross-origin",
+        }
+    )
+```
+
+### Expected Impact
+
+- **Reduced bandwidth** for repeated requests
+- **Faster page loads** with cached assets
+- **Better CDN integration** support
+
+---
+
+## 11. Database Query Logging and Monitoring
+
+### Current State
+
+- `echo=False` in database engine (no query logging)
+- No query performance monitoring
+
+### Recommendations
+
+- **Enable slow query logging** in development
+- **Add query timing middleware** to identify slow endpoints
+- **Use SQLAlchemy query logging** for debugging
+- **Add APM tools** (e.g., Sentry, DataDog) for production
+
+### Implementation
+
+```python
+import time
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+
+        if process_time > 1.0:  # Log slow requests
+            logger.warning(f"Slow request: {request.url} took {process_time:.2f}s")
+
+        return response
+
+app.add_middleware(TimingMiddleware)
+```
+
+### Expected Impact
+
+- **Identify performance bottlenecks**
+- **Monitor API response times**
+- **Debug slow queries** in development
+
+---
+
+## 12. Furniture Search Service Optimization
+
+### Current State
+
+- Loads entire CSV into memory on first request
+- Creates embeddings for all products on initialization
+- No caching of search results
+
+### Recommendations
+
+- **Lazy load embeddings** (create on-demand or in background)
+- **Use vector database** (e.g., Qdrant, Pinecone) for large-scale search
+- **Cache search results** by query hash
+- **Implement search result pagination**
+
+### Implementation
+
+```python
+# Use vector database for better scalability
+from qdrant_client import QdrantClient
+
+class FurnitureSearchService:
+    def __init__(self):
+        self.qdrant_client = QdrantClient("localhost", port=6333)
+        self.collection_name = "furniture_products"
+
+    def search(self, query: str, top_k: int = 3):
+        query_embedding = self.embedding_model.encode(query)
+        results = self.qdrant_client.search(
+            collection_name=self.collection_name,
+            query_vector=query_embedding,
+            limit=top_k
+        )
+        return results
+```
+
+### Expected Impact
+
+- **Faster search** for large product catalogs
+- **Better scalability** (millions of products)
+- **Reduced memory usage**
+
+---
+
+## 13. WebSocket Optimization
+
+### Current State
+
+- WebSocket router exists but implementation not fully reviewed
+
+### Recommendations
+
+- **Use connection pooling** for WebSocket connections
+- **Implement heartbeat/ping-pong** to detect dead connections
+- **Add message queuing** for offline clients
+- **Limit concurrent connections** per user
+
+---
+
+## 14. Security Optimizations
+
+### Current State
+
+- JWT tokens with long expiration (7 days)
+- No token refresh mechanism
+- No token blacklisting
+
+### Recommendations
+
+- **Implement refresh tokens** with shorter access token lifetime
+- **Add token blacklisting** for logout/security incidents
+- **Rate limit authentication endpoints** more aggressively
+- **Add request signing** for sensitive operations
+
+---
+
+## Priority Ranking
+
+### High Priority (Immediate Impact)
+
+1. **Response Compression** - Easy to implement, significant impact
+2. **Database Connection Pooling** - Critical for production
+3. **Database Indexes** - Quick win, improves query performance
+4. **Response Model Optimization** - Reduces payload sizes
+
+### Medium Priority (Important for Scale)
+
+5. **Caching Strategy** - Reduces load on database/ML models
+6. **Database Query Optimization** - Improves response times
+7. **Background Task Queue** - Better job management
+8. **Request Timeout and Rate Limiting** - Protects against abuse
+
+### Low Priority (Nice to Have)
+
+9. **Async File Operations** - Already mostly async
+10. **Response Headers and Caching** - Improves client-side performance
+11. **Query Logging and Monitoring** - Development/debugging tool
+12. **Furniture Search Optimization** - Only needed at scale
+13. **WebSocket Optimization** - Depends on usage
+14. **Security Optimizations** - Important but not performance-critical
+
+---
+
+## Implementation Order
+
+1. **Week 1**: Response compression, database pooling, indexes
+2. **Week 2**: Caching strategy, query optimization, response models
+3. **Week 3**: Background task queue, rate limiting
+4. **Week 4**: Monitoring, async file ops, response headers
+
+---
+
+## Expected Overall Impact
+
+- **API Response Time**: 30-50% improvement
+- **Database Load**: 40-60% reduction
+- **Bandwidth Usage**: 50-70% reduction
+- **Concurrent Request Capacity**: 2-3x improvement
+- **Server Resource Usage**: 20-30% reduction
 
 ---
 
 ## Notes
 
-- NeRFiller requires significant GPU memory (8GB+ recommended)
-- Inpainting takes 10-30 minutes per scene
-- Consider caching inpainted results
-- WebGPU support is experimental but promising for future
+- Test each optimization in isolation
+- Monitor performance metrics before/after
+- Some optimizations may require infrastructure changes (Redis, Celery)
+- Consider using APM tools (Sentry, DataDog) for production monitoring
