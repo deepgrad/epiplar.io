@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies (including build tools for gsplat)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.11 \
     python3.11-venv \

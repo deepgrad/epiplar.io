@@ -101,7 +101,7 @@ export function depthToPointCloud(
   depthResult: DepthEstimationResult,
   rgbData?: Uint8ClampedArray,
   focalLength: number = 500,
-  maxPoints: number = 50000
+  maxPoints: number = 500000  // 500K points for maximum quality
 ): { positions: Float32Array; colors: Float32Array } {
   const { depthMap, width, height } = depthResult;
 

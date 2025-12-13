@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { DepthEstimationResult } from '../services/depthEstimation'
 import ModelViewer from './ModelViewer'
-import SplatViewer from './SplatViewer'
 import DepthMapViewer from './DepthMapViewer'
-import { apiUrl, ModelAsset } from '../services/api'
+import { apiUrl, ModelAsset, LODAssetCollection } from '../services/api'
 
 interface ResultsPreviewProps {
   onReset: () => void
   depthResults: DepthEstimationResult[]
   originalFrames?: HTMLCanvasElement[]
   modelAsset?: ModelAsset | null
+  lodAssets?: LODAssetCollection | null  // NEW: LOD assets for progressive loading
 }
 
 type ViewMode = 'model' | 'depth'
@@ -19,8 +19,15 @@ export default function ResultsPreview({
   depthResults,
   originalFrames = [],
   modelAsset = null,
+  lodAssets = null,
 }: ResultsPreviewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('model')
+
+  // Determine the best asset for download (prefer full > medium > preview > legacy)
+  const downloadAsset = lodAssets?.full || lodAssets?.medium || lodAssets?.preview || modelAsset
+
+  // Check if we have any model to display
+  const hasModel = !!(lodAssets?.preview || lodAssets?.medium || lodAssets?.full || modelAsset?.url)
 
   if (depthResults.length === 0) {
     return (
@@ -83,13 +90,13 @@ export default function ResultsPreview({
       {/* Main Visualization */}
       <div className="bg-muted/50 rounded-xl border border-border overflow-hidden opacity-0 animate-scale-in stagger-5">
         {viewMode === 'model' && (
-          <div className="aspect-video">
-            {modelAsset?.url ? (
-              (['gs', 'ply', 'splat'].includes(modelAsset.format || '')) ? (
-                <SplatViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
-              ) : (
-                <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
-              )
+          <div className="aspect-video relative">
+            {hasModel ? (
+              <ModelViewer
+                lodAssets={lodAssets}
+                url={!lodAssets && modelAsset?.url ? apiUrl(modelAsset.url) : undefined}
+                className="w-full h-full"
+              />
             ) : (
               <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
                 <div className="w-16 h-16 rounded-xl bg-accent flex items-center justify-center">
@@ -112,22 +119,25 @@ export default function ResultsPreview({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-        {[
-          { value: depthResults.length.toString(), label: 'Frames' },
-          { value: modelAsset?.format?.toUpperCase?.() || '—', label: 'Format' },
-          { value: `${depthResults[0]?.width}x${depthResults[0]?.height}`, label: 'Resolution' },
-          { value: 'DA3', label: 'AI Model' },
-        ].map((stat, index) => (
-          <div
-            key={stat.label}
-            className="bg-muted/50 rounded-lg border border-border p-4 text-center hover:border-brand/30 transition-all duration-300 opacity-0 animate-slide-up"
-            style={{ animationDelay: `${0.6 + index * 0.1}s` }}
-          >
-            <p className="text-xl font-semibold text-foreground tabular-nums">{stat.value}</p>
-            <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+          <p className="text-2xl font-bold text-primary-600">{depthResults.length}</p>
+          <p className="text-sm text-slate-500">Frames Analyzed</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+          <p className="text-2xl font-bold text-primary-600">GLB</p>
+          <p className="text-sm text-slate-500">Model Format</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+          <p className="text-2xl font-bold text-primary-600">
+            {depthResults[0]?.width}x{depthResults[0]?.height}
+          </p>
+          <p className="text-sm text-slate-500">Resolution</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+          <p className="text-2xl font-bold text-green-600">DA3</p>
+          <p className="text-sm text-slate-500">Model Used</p>
+        </div>
       </div>
 
       {/* Actions */}
@@ -138,16 +148,18 @@ export default function ResultsPreview({
         >
           Process Another Video
         </button>
-        {modelAsset?.url && (
+        {downloadAsset?.url && (
           <a
-            href={apiUrl(modelAsset.url)}
-            className="w-full sm:w-auto px-6 py-3 bg-brand hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-all duration-300 text-center btn-press brand-glow flex items-center justify-center gap-2"
-            download={modelAsset.filename || undefined}
+            href={apiUrl(downloadAsset.url)}
+            className="w-full sm:w-auto px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-xl transition-colors text-center"
+            download={downloadAsset.filename || 'scene.glb'}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download Model
+            Download 3D Model
+            {downloadAsset.file_size_bytes && (
+              <span className="text-xs opacity-75 ml-1">
+                ({(downloadAsset.file_size_bytes / (1024 * 1024)).toFixed(1)} MB)
+              </span>
+            )}
           </a>
         )}
       </div>

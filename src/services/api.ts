@@ -3,7 +3,20 @@
  */
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+
+function normalizeWsBaseUrl(raw: string): string {
+  // Allow users to accidentally set http(s) here without breaking WebSocket construction.
+  if (raw.startsWith('https://')) return raw.replace(/^https:\/\//, 'wss://');
+  if (raw.startsWith('http://')) return raw.replace(/^http:\/\//, 'ws://');
+  return raw;
+}
+
+function defaultWsBaseUrl(): string {
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${window.location.host}`;
+}
+
+const WS_BASE_URL = normalizeWsBaseUrl(import.meta.env.VITE_WS_URL || defaultWsBaseUrl());
 
 export function apiUrl(pathOrUrl: string): string {
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
@@ -141,13 +154,23 @@ export interface ModelAsset {
   filename: string;
   url: string; // relative URL from backend
   format: string; // "glb", "ply", ...
+  lod_level?: 'preview' | 'medium' | 'full' | null; // LOD level identifier
+  point_count?: number; // Number of points in this LOD
+  file_size_bytes?: number; // File size for download estimation
+}
+
+export interface LODAssetCollection {
+  preview?: ModelAsset | null; // ~100K points, immediate load
+  medium?: ModelAsset | null;  // ~1M points, background load
+  full?: ModelAsset | null;    // ~10M points, on-demand load
 }
 
 export interface ProcessingResult {
   job_id: string;
   frames: DepthFrame[];
   camera_params: CameraParameters | null;
-  model_asset?: ModelAsset | null;
+  model_asset?: ModelAsset | null; // Keep for backwards compat (returns full quality)
+  lod_assets?: LODAssetCollection | null; // Multi-LOD assets for progressive loading
   original_width: number;
   original_height: number;
   model_used: string;
@@ -162,7 +185,6 @@ export interface JobStatus {
 
 export interface ProcessOptions {
   maxFrames?: number;
-  frameInterval?: number;
 }
 
 /**
@@ -199,8 +221,7 @@ export async function startProcessing(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      max_frames: options.maxFrames ?? 16,
-      frame_interval: options.frameInterval ?? 30,
+      max_frames: options.maxFrames ?? 128,
     }),
   });
 
@@ -263,10 +284,11 @@ export function connectProgressWebSocket(
   onComplete: (result: ProcessingResult) => void,
   onError: (error: Error) => void
 ): WebSocket {
-  const ws = new WebSocket(`${WS_BASE_URL}/ws/${jobId}`);
+  const wsUrl = `${WS_BASE_URL}/ws/${jobId}`;
+  const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('WebSocket connected', wsUrl);
   };
 
   ws.onmessage = (event) => {

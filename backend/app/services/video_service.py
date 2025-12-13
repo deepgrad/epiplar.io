@@ -28,16 +28,14 @@ class VideoService:
     def extract_frames(
         self,
         video_path: Path,
-        max_frames: int = 16,
-        frame_interval: int = 30,
+        max_frames: int = 128,
     ) -> Generator[tuple[int, np.ndarray], None, None]:
         """
-        Extract frames from video.
+        Extract frames from video with adaptive interval for full coverage.
 
         Args:
             video_path: Path to video file
-            max_frames: Maximum number of frames to extract
-            frame_interval: Extract every Nth frame
+            max_frames: Maximum number of frames to extract (uniformly distributed)
 
         Yields:
             Tuple of (frame_index, frame_rgb)
@@ -47,9 +45,12 @@ class VideoService:
             raise ValueError(f"Failed to open video: {video_path}")
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frames_to_extract = min(max_frames, total_frames // frame_interval + 1)
 
-        logger.info(f"Extracting {frames_to_extract} frames from {total_frames} total")
+        # Adaptive interval: uniformly sample across entire video
+        frames_to_extract = min(max_frames, total_frames)
+        adaptive_interval = max(1, total_frames // frames_to_extract)
+
+        logger.info(f"Extracting {frames_to_extract} frames from {total_frames} total (interval: {adaptive_interval})")
 
         frame_count = 0
         extracted = 0
@@ -59,7 +60,7 @@ class VideoService:
             if not ret:
                 break
 
-            if frame_count % frame_interval == 0:
+            if frame_count % adaptive_interval == 0:
                 # Convert BGR to RGB
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 yield extracted, frame_rgb
@@ -73,10 +74,9 @@ class VideoService:
     def extract_frames_to_list(
         self,
         video_path: Path,
-        max_frames: int = 16,
-        frame_interval: int = 30,
+        max_frames: int = 128,
     ) -> list[np.ndarray]:
         """Extract frames as a list (loads all into memory)."""
-        return [frame for _, frame in self.extract_frames(video_path, max_frames, frame_interval)]
+        return [frame for _, frame in self.extract_frames(video_path, max_frames)]
 
 video_service = VideoService()
