@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 
 interface SplatViewerProps {
@@ -9,7 +10,6 @@ interface SplatViewerProps {
 export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
-  const isDisposedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -17,43 +17,71 @@ export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
     if (!containerRef.current || !url) return;
 
     const container = containerRef.current;
-    isDisposedRef.current = false;
-
-    // Clear container manually before creating new viewer
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
+    let cancelled = false;
 
     setLoading(true);
     setLoadError(null);
 
-    let viewer: any = null;
+    // IMPORTANT:
+    // The library's Viewer.dispose() tries to remove `rootElement` from `document.body` when using an internal renderer.
+    // In React, `rootElement` is *not* a direct child of `document.body`, which throws:
+    //   NotFoundError: Failed to execute 'removeChild' on 'Node'
+    // Workaround: provide an external THREE.WebGLRenderer so `usingExternalRenderer = true` and the library does not touch body.
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      alpha: true,
+      precision: 'highp',
+    });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setClearColor(new THREE.Color(0x000000), 0.0);
 
-    // Create viewer and load scene
-    const initViewer = async () => {
+    const setRendererSize = () => {
+      const w = container.clientWidth || 1;
+      const h = container.clientHeight || 1;
+      renderer.setSize(w, h, false);
+
+      const viewer = viewerRef.current as any;
+      const cam = viewer?.camera as any;
+      if (cam?.isPerspectiveCamera) {
+        cam.aspect = w / h;
+        cam.updateProjectionMatrix?.();
+      } else if (cam?.isOrthographicCamera) {
+        cam.left = w / -2;
+        cam.right = w / 2;
+        cam.top = h / 2;
+        cam.bottom = h / -2;
+        cam.updateProjectionMatrix?.();
+      }
+      viewer?.forceRenderNextFrame?.();
+    };
+
+    // Ensure the container starts empty (React doesn't render children into it)
+    container.replaceChildren();
+    container.appendChild(renderer.domElement);
+
+    setRendererSize();
+
+    const viewer = new GaussianSplats3D.Viewer({
+      'rootElement': container,
+      'renderer': renderer,
+      'cameraUp': [0, 1, 0],
+      'initialCameraPosition': [0, 1.5, 3],
+      'initialCameraLookAt': [0, 0, 0],
+      // If shared memory is disabled, the library recommends disabling GPU-accelerated sorting too.
+      'sharedMemoryForWorkers': false,
+      'gpuAcceleratedSort': false,
+      'halfPrecisionCovariancesOnGPU': true,
+    });
+    viewerRef.current = viewer;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (cancelled) return;
+      setRendererSize();
+    });
+    resizeObserver.observe(container);
+
+    (async () => {
       try {
-        // Check if already disposed before creating
-        if (isDisposedRef.current) return;
-
-        viewer = new GaussianSplats3D.Viewer({
-          'rootElement': container,
-          'cameraUp': [0, 1, 0],
-          'initialCameraPosition': [0, 1.5, 3],
-          'initialCameraLookAt': [0, 0, 0],
-          'gpuAcceleratedSort': true,
-          'halfPrecisionCovariancesOnGPU': true,
-          // Disable shared memory to avoid CORS/worker issues
-          'sharedMemoryForWorkers': false,
-        });
-
-        viewerRef.current = viewer;
-
-        // Check again before loading scene
-        if (isDisposedRef.current) {
-          viewer.dispose();
-          return;
-        }
-
         await viewer.addSplatScene(url, {
           'showLoadingUI': false,
           'position': [0, 0, 0],
@@ -61,41 +89,44 @@ export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
           'scale': [1, 1, 1],
           'format': GaussianSplats3D.SceneFormat.Ply,
           'splatAlphaRemovalThreshold': 1,
+          // Helps confirm rendering earlier on large PLYs
+          'progressiveLoad': true,
         });
-
-        // Check again before starting
-        if (isDisposedRef.current) {
-          viewer.dispose();
-          return;
-        }
+        if (cancelled) return;
 
         viewer.start();
         setLoading(false);
       } catch (err: any) {
-        if (!isDisposedRef.current) {
-          console.error("Failed to load splat scene:", err);
-          setLoadError(err.message || "Failed to load Gaussian Splats");
-          setLoading(false);
-        }
+        if (cancelled) return;
+        console.error('Failed to load splat scene:', err);
+        setLoadError(err?.message || 'Failed to load Gaussian Splats');
+        setLoading(false);
       }
-    };
-
-    initViewer();
+    })();
 
     return () => {
-      isDisposedRef.current = true;
-      if (viewerRef.current) {
-        try {
-          viewerRef.current.dispose();
-        } catch (e) {
-          // Ignore disposal errors - manually clean up DOM
-        }
-        viewerRef.current = null;
-      }
-      // Clean up container manually
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
+      cancelled = true;
+      resizeObserver.disconnect();
+
+      const viewerToDispose = viewerRef.current as any;
+      viewerRef.current = null;
+
+      // Viewer.dispose() is async and can reject (e.g., "Scene disposed"). Always catch to avoid unhandled rejections.
+      void Promise.resolve(viewerToDispose?.dispose?.())
+        .catch(() => {})
+        .finally(() => {
+          try {
+            renderer.dispose();
+          } catch {
+            // ignore
+          }
+          // Remove any leftover DOM the viewer/renderer created
+          try {
+            container.replaceChildren();
+          } catch {
+            // ignore
+          }
+        });
     };
   }, [url]);
 
