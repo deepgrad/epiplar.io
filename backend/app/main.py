@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 import logging
 
 from .config import settings
@@ -13,6 +17,33 @@ from .db.database import init_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Threshold for slow request warnings (in seconds)
+SLOW_REQUEST_THRESHOLD = 1.0
+
+
+class TimingMiddleware(BaseHTTPMiddleware):
+    """Middleware to track request processing time and log slow requests."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        start_time = time.perf_counter()
+
+        response = await call_next(request)
+
+        process_time = time.perf_counter() - start_time
+
+        # Add X-Process-Time header to response
+        response.headers["X-Process-Time"] = f"{process_time:.4f}"
+
+        # Log warning for slow requests
+        if process_time > SLOW_REQUEST_THRESHOLD:
+            logger.warning(
+                f"Slow request: {request.method} {request.url.path} "
+                f"took {process_time:.4f}s (threshold: {SLOW_REQUEST_THRESHOLD}s)"
+            )
+
+        return response
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,7 +67,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# Middleware order (LIFO - last added runs first):
+# 1. CORS (innermost) - closest to app, ensures CORS headers on all responses
+# 2. GZip (middle) - compresses response bodies > 1KB
+# 3. Timing (outermost) - measures total request time including middleware
+
+# CORS middleware - added first (innermost layer)
+# Handles preflight OPTIONS and ensures CORS headers on all responses
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -44,6 +81,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip compression middleware - compresses responses larger than 1KB
+# Beneficial for JSON responses; already-compressed GLB files won't compress further
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Timing middleware - added last so it runs first (outermost)
+# Tracks total request time and logs slow requests (> 1.0s)
+app.add_middleware(TimingMiddleware)
 
 # Include routers
 app.include_router(auth_router, prefix="/api")

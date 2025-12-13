@@ -6,7 +6,18 @@ DATABASE_DIR = Path(__file__).parent.parent.parent / "data"
 DATABASE_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_DIR}/epipar.db"
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Connection pooling configuration
+# - pool_pre_ping: Verify connections are alive before use (prevents stale connections)
+# - check_same_thread: Allow SQLite connections to be used across threads (required for async)
+# - pool_size/max_overflow: Set for future PostgreSQL migration (limited effect on SQLite)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    connect_args={"check_same_thread": False}
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
