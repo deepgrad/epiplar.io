@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     conf_thresh_percentile: float = 30.0  # Lower = more points (less filtering)
 
     # Export settings
-    # "gs" = Gaussian Splatting (best quality, requires gsplat + special viewer)
-    # "glb" = Universal GLB format (works everywhere)
-    export_format: str = "gs"
+    # "gs_ply" = Gaussian Splatting PLY format (best quality, requires gsplat)
+    # "glb" = Standard point cloud GLB
+    # "gs_video" = Gaussian Splatting video
+    export_format: str = "gs_ply"
     show_cameras: bool = False  # Show camera positions in GLB
 
     temp_dir: Path = Path("/tmp/garaza")
