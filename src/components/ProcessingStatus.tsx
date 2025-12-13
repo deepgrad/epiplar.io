@@ -7,10 +7,10 @@ interface ProcessingStatusProps {
 }
 
 const stages = [
-  { id: 1, label: 'Loading AI model', key: 'Loading AI model' },
-  { id: 2, label: 'Initializing depth model', key: 'Initializing depth model' },
-  { id: 3, label: 'Processing frames', key: 'Processing frames' },
-  { id: 4, label: 'Building 3D model', key: 'Building 3D model' },
+  { id: 1, label: 'Uploading video', key: 'Uploading video' },
+  { id: 2, label: 'Extracting frames', key: 'Extracting frames' },
+  { id: 3, label: 'Loading DA3 model', key: 'Loading model' },
+  { id: 4, label: 'Processing depth', key: 'Processing depth' },
   { id: 5, label: 'Complete', key: 'Complete' },
 ]
 
@@ -130,9 +130,9 @@ export default function ProcessingStatus({ isProcessing, progress, onCancel }: P
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="text-xs sm:text-sm">
-              <p className="font-medium text-blue-800 mb-0.5 sm:mb-1">Using Depth Anything V2</p>
+              <p className="font-medium text-blue-800 mb-0.5 sm:mb-1">Using Depth Anything V3</p>
               <p className="text-blue-600">
-                State-of-the-art AI analyzes the depth and structure of your room from video frames.
+                Multi-view depth estimation with camera pose recovery for spatially consistent 3D reconstruction.
               </p>
             </div>
           </div>

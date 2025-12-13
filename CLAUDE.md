@@ -2,30 +2,41 @@
 
 ## Project Overview
 
-**Epipar.io** is an AI-powered web application for 3D room reconstruction from video. Users upload a video of their room, and the application converts it into an interactive 3D point cloud visualization using the Depth Anything V2 model.
+**Epipar.io** is an AI-powered web application for 3D room reconstruction from video. Users upload a video of their room, and the application converts it into an interactive 3D point cloud visualization using **Depth Anything V3** with a FastAPI backend.
 
 ### Core Features
 
 - Video upload with drag-and-drop support
 - Real-time AI-powered depth estimation from video frames
+- **Multi-view depth estimation** with spatially consistent results
+- **Camera pose estimation** (intrinsics & extrinsics)
 - Interactive 3D point cloud visualization
 - Depth map visualization with frame playback
 - Combined multi-frame point cloud generation
 - Point cloud data export to JSON format
-- WebGPU acceleration with WASM fallback
+- **GPU-accelerated backend** via Docker with NVIDIA CUDA
 
 ---
 
 ## Tech Stack
 
-| Category        | Technology                                        |
-| --------------- | ------------------------------------------------- |
-| Framework       | React 18.3 + TypeScript 5.6                       |
-| Build Tool      | Vite 6.0                                          |
-| 3D Graphics     | Three.js 0.182                                    |
-| AI/ML           | @huggingface/transformers 3.8 (Depth Anything V2) |
-| Styling         | Tailwind CSS 3.4                                  |
-| Package Manager | Bun                                               |
+### Frontend
+| Category        | Technology                  |
+| --------------- | --------------------------- |
+| Framework       | React 18.3 + TypeScript 5.6 |
+| Build Tool      | Vite 6.0                    |
+| 3D Graphics     | Three.js 0.182              |
+| Styling         | Tailwind CSS 3.4            |
+| Package Manager | Bun                         |
+
+### Backend
+| Category        | Technology                            |
+| --------------- | ------------------------------------- |
+| Framework       | FastAPI + Uvicorn                     |
+| AI/ML           | Depth Anything V3 (PyTorch)           |
+| Video Processing| OpenCV                                |
+| Deployment      | Docker with NVIDIA CUDA               |
+| Real-time       | WebSocket for progress updates        |
 
 ---
 
@@ -33,7 +44,7 @@
 
 ```
 garaza/
-├── src/
+├── src/                           # Frontend (React)
 │   ├── App.tsx                    # Main app component, state machine
 │   ├── main.tsx                   # React entry point
 │   ├── index.css                  # Global styles + Tailwind imports
@@ -44,18 +55,37 @@ garaza/
 │   │   ├── PointCloudViewer.tsx   # Three.js 3D point cloud renderer
 │   │   └── DepthMapViewer.tsx     # Depth map visualization
 │   └── services/
-│       └── depthEstimation.ts     # AI depth estimation service
+│       ├── api.ts                 # Backend API client
+│       └── depthEstimation.ts     # Depth utilities & result conversion
+├── backend/                       # Backend (FastAPI + DA3)
+│   ├── app/
+│   │   ├── main.py                # FastAPI application entry
+│   │   ├── config.py              # Settings (env-based)
+│   │   ├── models/
+│   │   │   └── schemas.py         # Pydantic models
+│   │   ├── api/
+│   │   │   ├── routes.py          # REST endpoints
+│   │   │   └── websocket.py       # WebSocket progress handler
+│   │   ├── services/
+│   │   │   ├── depth_service.py   # DA3 inference service
+│   │   │   └── video_service.py   # OpenCV frame extraction
+│   │   └── utils/
+│   │       └── file_utils.py      # File handling utilities
+│   ├── requirements.txt           # Python dependencies
+│   ├── Dockerfile                 # GPU-enabled container
+│   ├── docker-compose.yml         # Production config
+│   └── docker-compose.dev.yml     # Development config
 ├── public/                        # Static assets
 ├── index.html                     # HTML entry point
-├── tailwind.config.js             # Tailwind configuration
-├── vite.config.ts                 # Vite configuration
-├── tsconfig.json                  # TypeScript configuration
-└── package.json                   # Dependencies and scripts
+├── vite.config.ts                 # Vite configuration (with proxy)
+└── package.json                   # Frontend dependencies
 ```
 
 ---
 
 ## Commands
+
+### Frontend
 
 ```bash
 # Install dependencies
@@ -74,9 +104,58 @@ bun run preview
 bun run lint
 ```
 
+### Backend
+
+```bash
+# Start with Docker (production)
+cd backend
+docker-compose up --build
+
+# Start with Docker (development, with hot reload)
+cd backend
+docker-compose -f docker-compose.dev.yml up --build
+
+# Local development (requires Python 3.11+, CUDA)
+cd backend
+pip install -r requirements.txt
+pip install git+https://github.com/ByteDance-Seed/Depth-Anything-3.git
+uvicorn app.main:app --reload --port 8000
+```
+
 ---
 
 ## Architecture
+
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Frontend (React)                      │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
+│  │ VideoUpload │───▶│ api.ts      │───▶│ ProcessingStatus│  │
+│  │             │    │ (WebSocket) │    │                 │  │
+│  └─────────────┘    └─────────────┘    └─────────────────┘  │
+│                            │                    │            │
+│                            ▼                    ▼            │
+│                     ┌─────────────────────────────────┐     │
+│                     │ ResultsPreview + 3D Viewers     │     │
+│                     └─────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                             │
+                             ▼ HTTP/WebSocket
+┌─────────────────────────────────────────────────────────────┐
+│                   Backend (FastAPI + Docker)                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
+│  │ routes.py   │───▶│ video_svc   │───▶│ depth_service   │  │
+│  │ (REST API)  │    │ (OpenCV)    │    │ (DA3 + GPU)     │  │
+│  └─────────────┘    └─────────────┘    └─────────────────┘  │
+│         │                                       │            │
+│         ▼                                       ▼            │
+│  ┌─────────────┐                     ┌─────────────────┐    │
+│  │ websocket.py│◀────────────────────│ Progress Updates│    │
+│  └─────────────┘                     └─────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Application State Flow
 
@@ -89,11 +168,11 @@ upload → processing → results
 The app uses a simple state machine in `App.tsx`:
 
 - **upload**: Initial state, shows VideoUpload component
-- **processing**: Shows ProcessingStatus while AI processes video
+- **processing**: Shows ProcessingStatus while backend processes video
 - **results**: Shows ResultsPreview with 3D visualization
 - **error**: Shows error message with recovery options
 
-### Component Responsibilities
+### Frontend Components
 
 | Component              | Purpose                                     |
 | ---------------------- | ------------------------------------------- |
@@ -104,15 +183,33 @@ The app uses a simple state machine in `App.tsx`:
 | `PointCloudViewer.tsx` | Three.js scene, OrbitControls, 3D rendering |
 | `DepthMapViewer.tsx`   | Canvas-based depth map display              |
 
-### Service Layer
+### Frontend Services
 
-**depthEstimation.ts** handles:
+| Service               | Purpose                                     |
+| --------------------- | ------------------------------------------- |
+| `api.ts`              | Backend API client, WebSocket connection    |
+| `depthEstimation.ts`  | Result conversion, frame extraction utils   |
 
-- Lazy AI model initialization
-- WebGPU → WASM fallback logic
-- Video frame extraction
-- Depth estimation per frame
-- Progress callback reporting
+### Backend Services
+
+| Service               | Purpose                                     |
+| --------------------- | ------------------------------------------- |
+| `depth_service.py`    | DA3 model loading and inference             |
+| `video_service.py`    | OpenCV-based video frame extraction         |
+| `routes.py`           | REST API endpoints                          |
+| `websocket.py`        | Real-time progress updates                  |
+
+### API Endpoints
+
+| Endpoint              | Method | Purpose                              |
+| --------------------- | ------ | ------------------------------------ |
+| `/api/upload`         | POST   | Upload video file                    |
+| `/api/process/{id}`   | POST   | Start processing job                 |
+| `/api/status/{id}`    | GET    | Get job progress                     |
+| `/api/result/{id}`    | GET    | Retrieve depth results               |
+| `/api/job/{id}`       | DELETE | Cancel and cleanup job               |
+| `/ws/{id}`            | WS     | Real-time progress stream            |
+| `/health`             | GET    | Health check                         |
 
 ---
 
@@ -126,11 +223,14 @@ The app uses a simple state machine in `App.tsx`:
 - `useMemo` for expensive computations (point cloud generation)
 - `AbortController` for cancellable async operations
 
-### AI/ML Patterns
+### AI/ML Patterns (Backend)
 
-- Lazy model loading (loaded on first use)
-- Progress callbacks for long-running operations
-- Automatic backend fallback (WebGPU → WASM)
+- Lazy model loading (DA3 loaded on first request)
+- GPU-accelerated inference via PyTorch CUDA
+- Multi-view depth estimation for spatial consistency
+- Camera intrinsics/extrinsics extraction
+- Progress callbacks via WebSocket
+- CUDA memory cleanup after inference
 
 ### 3D Visualization Patterns
 
@@ -152,16 +252,22 @@ The app uses a simple state machine in `App.tsx`:
 
 ### Vite Configuration (vite.config.ts)
 
-Special CORS headers required for ONNX runtime:
+Includes proxy configuration for backend API:
 
 ```typescript
-headers: {
-  'Cross-Origin-Opener-Policy': 'same-origin',
-  'Cross-Origin-Embedder-Policy': 'require-corp',
+proxy: {
+  '/api': {
+    target: 'http://localhost:8000',
+    changeOrigin: true,
+  },
+  '/ws': {
+    target: 'ws://localhost:8000',
+    ws: true,
+  },
 }
 ```
 
-These enable `SharedArrayBuffer` for multi-threaded AI inference.
+Also includes CORS headers for SharedArrayBuffer (kept for compatibility).
 
 ### TypeScript Configuration
 
@@ -191,11 +297,19 @@ Custom primary color palette (sky blue) and Inter font family.
 
 ---
 
-## Browser Requirements
+## Requirements
 
-- **Required**: SharedArrayBuffer support, WebGL
-- **Optional**: WebGPU (better performance, falls back to WASM)
+### Browser (Frontend)
+
+- **Required**: WebGL for 3D visualization
 - **Target**: Modern browsers with ES2020+ support
+
+### Server (Backend)
+
+- **Required**: NVIDIA GPU with CUDA 12.1+
+- **Docker**: nvidia-container-toolkit for GPU access
+- **Memory**: 8GB+ GPU VRAM recommended (4GB minimum with da3-small)
+- **Storage**: ~5GB for Docker image and model cache
 
 ---
 
@@ -271,23 +385,24 @@ The app shows error state with:
 
 ## Dependencies Reference
 
-### Core
+### Frontend
 
 - `react`, `react-dom`: UI framework
 - `three`: 3D visualization
-- `@huggingface/transformers`: AI inference
-
-### Build/Dev
-
 - `vite`: Build tool
 - `typescript`: Type checking
 - `tailwindcss`: Styling
-- `eslint`: Linting
+- `@types/react`, `@types/react-dom`, `@types/three`: Type definitions
 
-### Types
+### Backend (Python)
 
-- `@types/react`, `@types/react-dom`
-- `@types/three`
+- `fastapi`, `uvicorn`: Web framework
+- `depth-anything-3`: DA3 model (from GitHub)
+- `torch`, `torchvision`: PyTorch runtime
+- `opencv-python`: Video processing
+- `pydantic`, `pydantic-settings`: Data validation
+- `aiofiles`: Async file handling
+- `websockets`: Real-time updates
 
 ---
 
@@ -295,11 +410,13 @@ The app shows error state with:
 
 ### Change number of processed frames
 
-Edit `src/services/depthEstimation.ts`:
+Edit `backend/app/config.py`:
 
-```typescript
-const maxFrames = 8; // Change this value
+```python
+max_frames: int = 16  # Change this value
 ```
+
+Or set environment variable: `GARAZA_MAX_FRAMES=16`
 
 ### Change point cloud density
 
@@ -308,6 +425,13 @@ Edit `src/components/PointCloudViewer.tsx`:
 ```typescript
 const maxPoints = 50000; // Change this value
 ```
+
+### Change DA3 model variant
+
+Edit `backend/app/config.py` or set `GARAZA_MODEL_NAME`:
+- `da3-small`: Fastest, 2GB VRAM
+- `da3-base`: Balanced (default)
+- `da3-large`: Best quality, 8GB+ VRAM
 
 ### Add new visualization mode
 
@@ -324,7 +448,9 @@ Edit `tailwind.config.js` primary color palette.
 ## Notes
 
 - No testing framework currently configured
-- SharedArrayBuffer requires specific server headers
-- WebGPU provides ~2-3x faster inference than WASM
 - Point cloud export is JSON format (can be large files)
 - The app name "Epipar.io" relates to room/furniture redesign concept
+- DA3 requires GPU for reasonable performance
+- Backend uses in-memory job storage (use Redis for production)
+- Multi-view DA3 provides spatially consistent depth across frames
+- Camera parameters are extracted but not yet used in visualization

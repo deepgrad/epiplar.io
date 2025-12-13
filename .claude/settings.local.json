@@ -19,7 +19,8 @@
       "Bash(powershell \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; & ''C:\\Users\\panonit\\.bun\\bin\\bun.exe'' run tsc --noEmit 2>&1 | Select-Object -First 30\")",
       "Bash(powershell:*)",
       "Bash(npx tsc:*)",
-      "Bash(C:/Users/panonit/.bun/bin/bun.exe run tsc --noEmit)"
+      "Bash(C:/Users/panonit/.bun/bin/bun.exe run tsc --noEmit)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

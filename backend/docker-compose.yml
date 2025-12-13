@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GARAZA_MODEL_NAME=da3-base
+      - GARAZA_MAX_UPLOAD_SIZE=524288000
+      - GARAZA_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+    volumes:
+      - ./uploads:/tmp/garaza
+      - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  huggingface-cache:

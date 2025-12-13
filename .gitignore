@@ -69,3 +69,48 @@ Thumbs.db
 *.temp
 nul
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+.pyenv
+venv/
+ENV/
+env/
+.venv/
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Cache directories
+.cache/
+.parcel-cache/
+
+# Python version
+.python-version
+

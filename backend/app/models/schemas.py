@@ -1,0 +1,38 @@
+from pydantic import BaseModel
+from typing import Optional
+
+class ProcessVideoRequest(BaseModel):
+    max_frames: int = 16
+    frame_interval: int = 30
+
+class ProgressUpdate(BaseModel):
+    stage: str
+    progress: float
+    current_frame: Optional[int] = None
+    total_frames: Optional[int] = None
+    message: str
+
+class DepthFrame(BaseModel):
+    frame_index: int
+    depth_map_b64: str  # Base64 encoded Float32Array
+    width: int
+    height: int
+    confidence_b64: Optional[str] = None
+
+class CameraParameters(BaseModel):
+    extrinsics: list[list[list[float]]]  # [N, 3, 4]
+    intrinsics: list[list[list[float]]]  # [N, 3, 3]
+
+class ProcessingResult(BaseModel):
+    job_id: str
+    frames: list[DepthFrame]
+    camera_params: Optional[CameraParameters] = None
+    original_width: int
+    original_height: int
+    model_used: str
+
+class JobStatus(BaseModel):
+    job_id: str
+    status: str  # "pending", "processing", "completed", "failed"
+    progress: Optional[ProgressUpdate] = None
+    error: Optional[str] = None

@@ -3,10 +3,18 @@ import VideoUpload from './components/VideoUpload'
 import ProcessingStatus from './components/ProcessingStatus'
 import ResultsPreview from './components/ResultsPreview'
 import {
-  processVideoForDepth,
   DepthEstimationResult,
-  ProcessingProgress
+  ProcessingProgress,
+  convertBackendResult,
+  extractVideoFrames,
+  CameraParameters,
 } from './services/depthEstimation'
+import {
+  uploadVideo,
+  startProcessing,
+  connectProgressWebSocket,
+  cancelJob,
+} from './services/api'
 
 type AppState = 'upload' | 'processing' | 'results' | 'error'
 
@@ -18,7 +26,9 @@ function App() {
   const [depthResults, setDepthResults] = useState<DepthEstimationResult[]>([])
   const [originalFrames, setOriginalFrames] = useState<HTMLCanvasElement[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
+  const [cameraParams, setCameraParams] = useState<CameraParameters | null>(null)
+  const jobIdRef = useRef<string | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
 
   const handleVideoSelect = (file: File) => {
     setSelectedVideo(file)
@@ -29,70 +39,54 @@ function App() {
     if (!selectedVideo) return
 
     setAppState('processing')
-    setProcessingProgress({ stage: 'Initializing', progress: 0 })
+    setProcessingProgress({ stage: 'Uploading video', progress: 0 })
     setErrorMessage(null)
 
-    abortControllerRef.current = new AbortController()
-
     try {
-      // Extract frames for original preview
-      const frames: HTMLCanvasElement[] = []
+      // 1. Upload video to backend
+      setProcessingProgress({ stage: 'Uploading video', progress: 5 })
+      const { jobId } = await uploadVideo(selectedVideo)
+      jobIdRef.current = jobId
 
-      const results = await processVideoForDepth(selectedVideo, {
-        maxFrames: 8, // Process 8 frames for good coverage
-        frameInterval: 30, // Every 30 frames (about 1 second at 30fps)
-        onProgress: (progress) => {
-          setProcessingProgress(progress)
+      // 2. Extract frames locally for color preview (parallel with backend processing)
+      const framesPromise = extractVideoFrames(selectedVideo, 8, 30)
 
-          // Update stage to building 3D model near the end
-          if (progress.progress >= 90 && progress.stage === 'Processing frames') {
-            setProcessingProgress({
-              ...progress,
-              stage: 'Building 3D model',
-              progress: 90 + ((progress.progress - 90) / 10) * 10,
-            })
-          }
+      // 3. Connect WebSocket for progress updates
+      const ws = connectProgressWebSocket(
+        jobId,
+        (progress) => {
+          setProcessingProgress({
+            stage: progress.stage,
+            progress: progress.progress,
+            currentFrame: progress.current_frame,
+            totalFrames: progress.total_frames,
+            message: progress.message,
+          })
         },
-      })
+        async (result) => {
+          // Processing complete
+          const depthResults = convertBackendResult(result)
+          const frames = await framesPromise
 
-      // Extract original frames for color data
-      const video = document.createElement('video')
-      video.src = URL.createObjectURL(selectedVideo)
-      video.muted = true
+          setDepthResults(depthResults)
+          setOriginalFrames(frames)
+          setCameraParams(result.camera_params)
+          setProcessingProgress({ stage: 'Complete', progress: 100 })
 
-      await new Promise<void>((resolve, reject) => {
-        video.onloadedmetadata = () => resolve()
-        video.onerror = () => reject(new Error('Failed to load video'))
-      })
+          setTimeout(() => {
+            setAppState('results')
+          }, 500)
+        },
+        (error) => {
+          console.error('Processing error:', error)
+          setErrorMessage(error.message)
+          setAppState('error')
+        }
+      )
+      wsRef.current = ws
 
-      const fps = 30
-      const frameInterval = 30
-
-      for (let i = 0; i < results.length; i++) {
-        const frameTime = (i * frameInterval) / fps
-        video.currentTime = Math.min(frameTime, video.duration - 0.1)
-        await new Promise<void>((resolve) => {
-          video.onseeked = () => resolve()
-        })
-
-        const frameCanvas = document.createElement('canvas')
-        frameCanvas.width = video.videoWidth
-        frameCanvas.height = video.videoHeight
-        const frameCtx = frameCanvas.getContext('2d')!
-        frameCtx.drawImage(video, 0, 0)
-        frames.push(frameCanvas)
-      }
-
-      URL.revokeObjectURL(video.src)
-
-      setDepthResults(results)
-      setOriginalFrames(frames)
-      setProcessingProgress({ stage: 'Complete', progress: 100 })
-
-      // Short delay before showing results
-      setTimeout(() => {
-        setAppState('results')
-      }, 500)
+      // 4. Start processing on backend
+      await startProcessing(jobId, { maxFrames: 8, frameInterval: 30 })
 
     } catch (error) {
       console.error('Processing error:', error)
@@ -101,8 +95,23 @@ function App() {
     }
   }
 
-  const handleCancel = () => {
-    abortControllerRef.current?.abort()
+  const handleCancel = async () => {
+    // Close WebSocket
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+
+    // Cancel job on backend
+    if (jobIdRef.current) {
+      try {
+        await cancelJob(jobIdRef.current)
+      } catch (e) {
+        console.warn('Failed to cancel job:', e)
+      }
+      jobIdRef.current = null
+    }
+
     setAppState('upload')
     setProcessingProgress(null)
   }
@@ -114,6 +123,12 @@ function App() {
     setOriginalFrames([])
     setProcessingProgress(null)
     setErrorMessage(null)
+    setCameraParams(null)
+    jobIdRef.current = null
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
   }, [])
 
   return (
@@ -198,7 +213,7 @@ function App() {
               </h1>
               <p className="text-base sm:text-lg text-slate-500 max-w-2xl mx-auto px-2">
                 Upload a video of your room and our AI will create a 3D reconstruction
-                using Depth Anything V2 technology.
+                using Depth Anything V3 technology.
               </p>
             </div>
 
@@ -221,7 +236,7 @@ function App() {
                 {selectedVideo ? 'Generate 3D Room Model' : 'Upload a video first'}
               </button>
               <p className="text-xs sm:text-sm text-slate-400 mt-3">
-                Powered by Depth Anything V2 AI
+                Powered by Depth Anything V3 AI
               </p>
             </div>
 
@@ -235,7 +250,7 @@ function App() {
                     </svg>
                   ),
                   title: 'AI Depth Estimation',
-                  description: 'State-of-the-art Depth Anything V2 analyzes each frame to understand room depth.',
+                  description: 'State-of-the-art Depth Anything V3 with multi-view consistency for superior depth accuracy.',
                 },
                 {
                   icon: (
@@ -328,7 +343,7 @@ function App() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs sm:text-sm text-slate-500 text-center sm:text-left">
-              2025 Garaza. Powered by Depth Anything V2.
+              2025 Garaza. Powered by Depth Anything V3.
             </p>
             <div className="flex items-center gap-4 sm:gap-6">
               <a href="#" className="text-xs sm:text-sm text-slate-500 hover:text-slate-700 transition-colors py-1">Privacy</a>

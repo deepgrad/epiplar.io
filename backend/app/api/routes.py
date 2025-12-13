@@ -1,0 +1,155 @@
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from pathlib import Path
+import asyncio
+import logging
+
+from ..models.schemas import ProcessVideoRequest, ProcessingResult, JobStatus, ProgressUpdate
+from ..services.depth_service import depth_service
+from ..services.video_service import video_service
+from ..utils.file_utils import save_upload_file, cleanup_job
+from ..config import settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# In-memory job storage (use Redis in production)
+jobs: dict[str, dict] = {}
+
+@router.post("/upload")
+async def upload_video(file: UploadFile = File(...)):
+    """Upload a video file for processing."""
+    # Validate file type
+    content_type = file.content_type or ""
+    if not content_type.startswith("video/"):
+        raise HTTPException(400, "File must be a video")
+
+    # Check file size (read content length if available)
+    if file.size and file.size > settings.max_upload_size:
+        raise HTTPException(413, f"File too large. Max size: {settings.max_upload_size // 1024 // 1024}MB")
+
+    # Save file
+    job_id, file_path = await save_upload_file(file)
+
+    # Initialize job
+    jobs[job_id] = {
+        "status": "uploaded",
+        "file_path": str(file_path),
+        "progress": None,
+        "result": None,
+        "error": None,
+    }
+
+    logger.info(f"Video uploaded: {job_id}")
+    return {"job_id": job_id, "status": "uploaded"}
+
+@router.post("/process/{job_id}")
+async def start_processing(
+    job_id: str,
+    request: ProcessVideoRequest = ProcessVideoRequest(),
+    background_tasks: BackgroundTasks = None,
+):
+    """Start processing a previously uploaded video."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Job not found")
+
+    job = jobs[job_id]
+    if job["status"] not in ["uploaded", "failed"]:
+        raise HTTPException(400, f"Job already {job['status']}")
+
+    job["status"] = "processing"
+
+    # Run processing in background
+    background_tasks.add_task(
+        process_video_task,
+        job_id,
+        Path(job["file_path"]),
+        request.max_frames,
+        request.frame_interval,
+    )
+
+    return {"status": "processing", "job_id": job_id}
+
+async def process_video_task(
+    job_id: str,
+    video_path: Path,
+    max_frames: int,
+    frame_interval: int,
+):
+    """Background task to process video."""
+    try:
+        def update_progress(progress: ProgressUpdate):
+            jobs[job_id]["progress"] = progress.model_dump()
+
+        # Extract frames
+        update_progress(ProgressUpdate(
+            stage="Extracting frames",
+            progress=5.0,
+            message="Extracting video frames..."
+        ))
+
+        frames = video_service.extract_frames_to_list(
+            video_path,
+            max_frames=max_frames,
+            frame_interval=frame_interval,
+        )
+
+        if not frames:
+            raise ValueError("No frames extracted from video")
+
+        # Run depth estimation
+        result = await depth_service.estimate_depth(
+            frames,
+            job_id,
+            progress_callback=update_progress,
+        )
+
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["result"] = result.model_dump()
+
+        logger.info(f"Job completed: {job_id}")
+
+    except Exception as e:
+        logger.error(f"Job failed: {job_id} - {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
+
+@router.get("/status/{job_id}")
+async def get_status(job_id: str) -> JobStatus:
+    """Get the status of a processing job."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Job not found")
+
+    job = jobs[job_id]
+    return JobStatus(
+        job_id=job_id,
+        status=job["status"],
+        progress=ProgressUpdate(**job["progress"]) if job["progress"] else None,
+        error=job["error"],
+    )
+
+@router.get("/result/{job_id}")
+async def get_result(job_id: str) -> ProcessingResult:
+    """Get the processing result."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Job not found")
+
+    job = jobs[job_id]
+    if job["status"] != "completed":
+        raise HTTPException(400, f"Job not completed. Status: {job['status']}")
+
+    return ProcessingResult(**job["result"])
+
+@router.delete("/job/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel and cleanup a job."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Job not found")
+
+    # Cleanup files
+    cleanup_job(job_id)
+
+    # Remove from memory
+    del jobs[job_id]
+
+    return {"status": "deleted"}

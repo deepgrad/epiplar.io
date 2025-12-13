@@ -1,8 +1,14 @@
-import { pipeline, env, RawImage, ProgressCallback } from '@huggingface/transformers';
+/**
+ * Depth estimation service
+ *
+ * This module has been refactored to use a Python FastAPI backend running
+ * Depth Anything V3 for improved accuracy and multi-view depth estimation.
+ *
+ * The utility functions (depthToPointCloud, depthMapToCanvas) are retained
+ * for frontend visualization.
+ */
 
-// Configure transformers.js
-env.allowLocalModels = false;
-env.useBrowserCache = true;
+import { ProcessingResult, DepthFrame, decodeFloat32Array } from './api';
 
 export interface DepthEstimationResult {
   depthMap: Float32Array;
@@ -17,194 +23,75 @@ export interface ProcessingProgress {
   progress: number;
   currentFrame?: number;
   totalFrames?: number;
+  message?: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let depthEstimator: any = null;
-let isInitializing = false;
-
-/**
- * Initialize the depth estimation model
- * Uses Depth Anything V2 Small for browser performance
- */
-export async function initializeDepthEstimator(
-  onProgress?: (progress: number) => void
-): Promise<void> {
-  if (depthEstimator) return;
-  if (isInitializing) {
-    // Wait for existing initialization
-    while (isInitializing) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return;
-  }
-
-  isInitializing = true;
-
-  const progressCallback: ProgressCallback = (data) => {
-    if (onProgress && 'progress' in data && typeof data.progress === 'number') {
-      onProgress(data.progress);
-    }
-  };
-
-  try {
-    depthEstimator = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
-      device: 'webgpu', // Use WebGPU if available, falls back to WASM
-      progress_callback: progressCallback,
-    });
-  } catch (error) {
-    console.warn('WebGPU not available, falling back to WASM:', error);
-    // Fallback to WASM
-    depthEstimator = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
-      device: 'wasm',
-      progress_callback: progressCallback,
-    });
-  }
-
-  isInitializing = false;
+export interface CameraParameters {
+  extrinsics: number[][][]; // [N, 3, 4]
+  intrinsics: number[][][]; // [N, 3, 3]
 }
 
 /**
- * Estimate depth for a single image/frame
+ * Convert backend ProcessingResult to frontend DepthEstimationResult format
+ * This allows reuse of existing visualization code
  */
-export async function estimateDepth(
-  imageSource: string | HTMLImageElement | HTMLCanvasElement | ImageData
-): Promise<DepthEstimationResult> {
-  if (!depthEstimator) {
-    await initializeDepthEstimator();
-  }
+export function convertBackendResult(
+  result: ProcessingResult
+): DepthEstimationResult[] {
+  return result.frames.map((frame: DepthFrame) => {
+    const depthMap = decodeFloat32Array(frame.depth_map_b64);
 
-  if (!depthEstimator) {
-    throw new Error('Failed to initialize depth estimator');
-  }
-
-  // Convert to RawImage if needed
-  let image: RawImage;
-  if (typeof imageSource === 'string') {
-    image = await RawImage.fromURL(imageSource);
-  } else if (imageSource instanceof HTMLImageElement) {
-    image = await RawImage.fromURL(imageSource.src);
-  } else if (imageSource instanceof HTMLCanvasElement) {
-    const dataUrl = imageSource.toDataURL('image/png');
-    image = await RawImage.fromURL(dataUrl);
-  } else if (imageSource instanceof ImageData) {
-    image = new RawImage(
-      new Uint8ClampedArray(imageSource.data),
-      imageSource.width,
-      imageSource.height,
-      4
-    );
-  } else {
-    throw new Error('Unsupported image source type');
-  }
-
-  const result = await depthEstimator(image);
-
-  // The result can be an array or single object
-  const output = Array.isArray(result) ? result[0] : result;
-  const depthImage = output.depth as RawImage;
-
-  // Convert depth data to Float32Array (normalized 0-1)
-  const depthData = new Float32Array(depthImage.width * depthImage.height);
-  const rawData = depthImage.data as Uint8Array;
-
-  for (let i = 0; i < depthData.length; i++) {
-    // Depth values are stored as grayscale (0-255), normalize to 0-1
-    depthData[i] = rawData[i] / 255;
-  }
-
-  return {
-    depthMap: depthData,
-    width: depthImage.width,
-    height: depthImage.height,
-    originalWidth: image.width,
-    originalHeight: image.height,
-  };
+    return {
+      depthMap,
+      width: frame.width,
+      height: frame.height,
+      originalWidth: result.original_width,
+      originalHeight: result.original_height,
+    };
+  });
 }
 
 /**
- * Extract frames from video and estimate depth for each
+ * Extract video frames as canvas elements (for color data)
  */
-export async function processVideoForDepth(
+export async function extractVideoFrames(
   videoFile: File,
-  options: {
-    maxFrames?: number;
-    frameInterval?: number; // Extract every Nth frame
-    onProgress?: (progress: ProcessingProgress) => void;
-  } = {}
-): Promise<DepthEstimationResult[]> {
-  const { maxFrames = 10, frameInterval = 30, onProgress } = options;
-
-  // Create video element
+  maxFrames: number = 8,
+  frameInterval: number = 30
+): Promise<HTMLCanvasElement[]> {
   const video = document.createElement('video');
   video.src = URL.createObjectURL(videoFile);
   video.muted = true;
 
-  // Wait for video to load
   await new Promise<void>((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
     video.onerror = () => reject(new Error('Failed to load video'));
   });
 
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
-
-  // Set canvas size to match video
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-
-  const fps = 30; // Assume 30fps
+  const fps = 30;
   const totalVideoFrames = Math.floor(video.duration * fps);
   const framesToExtract = Math.min(maxFrames, Math.ceil(totalVideoFrames / frameInterval));
 
-  onProgress?.({
-    stage: 'Initializing depth model',
-    progress: 0,
-  });
-
-  // Initialize model
-  await initializeDepthEstimator((p) => {
-    onProgress?.({
-      stage: 'Loading AI model',
-      progress: p * 0.2, // Model loading is 20% of total
-    });
-  });
-
-  const results: DepthEstimationResult[] = [];
+  const frames: HTMLCanvasElement[] = [];
 
   for (let i = 0; i < framesToExtract; i++) {
     const frameTime = (i * frameInterval) / fps;
-
-    // Seek to frame
     video.currentTime = Math.min(frameTime, video.duration - 0.1);
+
     await new Promise<void>((resolve) => {
       video.onseeked = () => resolve();
     });
 
-    // Draw frame to canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d')!;
     ctx.drawImage(video, 0, 0);
-
-    onProgress?.({
-      stage: 'Processing frames',
-      progress: 20 + ((i / framesToExtract) * 70), // Frame processing is 70% of total
-      currentFrame: i + 1,
-      totalFrames: framesToExtract,
-    });
-
-    // Estimate depth
-    const depthResult = await estimateDepth(canvas);
-    results.push(depthResult);
+    frames.push(canvas);
   }
 
-  // Cleanup
   URL.revokeObjectURL(video.src);
-
-  onProgress?.({
-    stage: 'Complete',
-    progress: 100,
-  });
-
-  return results;
+  return frames;
 }
 
 /**
