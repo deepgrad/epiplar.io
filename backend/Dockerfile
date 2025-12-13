@@ -25,8 +25,12 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
+# Upgrade pip to handle distutils conflicts better
+RUN pip install --upgrade pip
+
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Use --break-system-packages to handle system-installed packages (Python 3.11+)
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Install depth-anything-3 from git
 RUN pip install --no-cache-dir git+https://github.com/ByteDance-Seed/Depth-Anything-3.git
