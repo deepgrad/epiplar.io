@@ -94,7 +94,7 @@ class DepthService:
             z_valid = z[valid]
 
             x = (u_flat - cx) * z_valid / fx
-            y = (v_flat - cy) * z_valid / fy
+            y = -((v_flat - cy) * z_valid / fy)  # Negate Y: image coords (Y-down) → glTF (Y-up)
 
             # Transform to world coordinates
             pts_cam = np.stack([x, y, z_valid, np.ones_like(x)], axis=1)
