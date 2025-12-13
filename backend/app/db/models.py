@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, ForeignKey, Text, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -6,6 +6,9 @@ from .database import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index('idx_user_plan_active', 'plan', 'is_active'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
@@ -56,6 +59,10 @@ class User(Base):
 
 class UserActivity(Base):
     __tablename__ = "user_activities"
+    __table_args__ = (
+        Index('idx_user_activity_user_created', 'user_id', 'created_at'),
+        Index('idx_user_activity_action', 'action'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
