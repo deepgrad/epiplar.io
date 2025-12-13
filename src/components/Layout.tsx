@@ -21,8 +21,8 @@ export default function Layout({ children }: LayoutProps) {
       <header className="border-b border-border/40 glass sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between relative">
           <Link to="/" className="flex items-center gap-2 sm:gap-3 select-none">
-            <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-8 h-8 sm:w-9 sm:h-9 pointer-events-none" draggable="false" />
-            <span className="text-base sm:text-lg font-semibold text-foreground tracking-tight">epipar.io</span>
+            <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="interia" className="w-8 h-8 sm:w-9 sm:h-9 pointer-events-none" draggable="false" />
+            <span className="text-base sm:text-lg font-semibold text-foreground tracking-tight">interia</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-6 lg:gap-8 select-none absolute left-1/2 -translate-x-1/2">
@@ -47,7 +47,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="hidden sm:flex items-center gap-2 sm:gap-3">
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-300 wiggle-hover"
               aria-label="Toggle theme"
             >
               {theme === 'dark' ? (
@@ -82,7 +82,7 @@ export default function Layout({ children }: LayoutProps) {
                 </Link>
                 <Link
                   to="/register"
-                  className="px-4 py-2 bg-brand hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-all duration-300 btn-press brand-glow"
+                  className="px-4 py-2 bg-brand hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-all duration-300 btn-press brand-glow btn-bounce"
                 >
                   Get started
                 </Link>
@@ -204,11 +204,14 @@ export default function Layout({ children }: LayoutProps) {
             {/* Brand */}
             <div>
               <div className="flex items-center gap-2 mb-3 select-none">
-                <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-6 h-6 pointer-events-none" draggable="false" />
-                <span className="text-sm font-semibold text-foreground">epipar.io</span>
+                <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="interia" className="w-6 h-6 pointer-events-none" draggable="false" />
+                <span className="text-sm font-semibold text-foreground">interia</span>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                AI-powered 3D room reconstruction and furniture search. Transform your space with cutting-edge depth estimation technology.
+                AI-powered 3D room reconstruction with furniture detection, search, and suggestion.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Garaža Frontier Hackathon 2025
               </p>
             </div>
 
@@ -218,7 +221,6 @@ export default function Layout({ children }: LayoutProps) {
               <div className="flex flex-col gap-2">
                 <Link to="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Features</Link>
                 <Link to="/pricing" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
-                <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Documentation</a>
               </div>
             </div>
 
@@ -229,22 +231,14 @@ export default function Layout({ children }: LayoutProps) {
                 <a href="mailto:deepgrad.hack@gmail.com" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                   deepgrad.hack@gmail.com
                 </a>
-                <p className="text-xs text-muted-foreground">
-                  Built with passion at DeepGrad Hackathon
-                </p>
               </div>
             </div>
           </div>
 
-          <div className="border-t border-border/40 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-muted-foreground">
-              © 2025 epipar.io · Built by the DeepGrad Hackathon Team
+          <div className="border-t border-border/40 pt-6">
+            <p className="text-xs text-muted-foreground text-center">
+              © 2025 interia · deepgrad at Garaža Frontier Hackathon 2025
             </p>
-            <div className="flex items-center gap-6">
-              <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</a>
-              <a href="mailto:deepgrad.hack@gmail.com" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</a>
-            </div>
           </div>
         </div>
       </footer>

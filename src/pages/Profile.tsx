@@ -193,7 +193,7 @@ export default function Profile() {
               {displayUser.stats.plan !== 'free' && (
                 <Link
                   to="/pricing"
-                  className="px-4 py-2 bg-accent hover:bg-accent/80 text-foreground text-xs font-medium rounded-lg transition-all duration-300 border border-border"
+                  className="px-4 py-2 bg-accent hover:bg-accent/80 text-foreground text-xs font-medium rounded-lg transition-all duration-300 border border-border border-hover-glow"
                 >
                   Manage
                 </Link>

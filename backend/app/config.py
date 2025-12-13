@@ -50,7 +50,14 @@ class Settings(BaseSettings):
     completion_blur_type: str = "bilateral" # "bilateral" (edge-preserving) or "gaussian" (faster)
 
     temp_dir: Path = Path("/tmp/garaza")
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # CORS origins - add your frontend URLs here
+    # For development, includes localhost. For production, add your domain.
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ]
     
     # Cleanup settings
     auto_cleanup_after_completion: bool = False  # Automatically delete job files after completion

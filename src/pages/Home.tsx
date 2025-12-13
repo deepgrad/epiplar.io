@@ -155,7 +155,7 @@ export default function Home() {
 
             {/* Upload Section */}
             <div className="max-w-3xl mx-auto mb-6 opacity-0 animate-scale-in stagger-4">
-              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6">
+              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6 border-hover-glow">
                 <VideoUpload onVideoSelect={handleVideoSelect} />
               </div>
             </div>
@@ -167,7 +167,7 @@ export default function Home() {
                 disabled={!selectedVideo}
                 className={`px-8 py-4 font-medium rounded-lg transition-all duration-300 text-sm sm:text-base btn-press
                            ${selectedVideo
-                             ? 'bg-brand hover:bg-brand-500 text-white brand-glow'
+                             ? 'bg-brand hover:bg-brand-500 text-white brand-glow btn-bounce'
                              : 'bg-accent text-muted-foreground cursor-not-allowed'
                            }`}
               >
@@ -180,7 +180,7 @@ export default function Home() {
 
             {/* Furniture Search Section */}
             <div className="max-w-3xl mx-auto opacity-0 animate-scale-in stagger-6">
-              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6">
+              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6 border-hover-glow">
                 <FurnitureSearch onProductSelect={handleProductSelect} />
               </div>
             </div>
@@ -221,7 +221,7 @@ export default function Home() {
                   className={`group p-5 sm:p-6 rounded-xl bg-muted/50 border border-border/50 hover:border-brand/30 hover:bg-muted transition-all duration-300 hover-lift card-shine opacity-0 animate-slide-up`}
                   style={{ animationDelay: `${0.6 + index * 0.1}s` }}
                 >
-                  <div className="w-10 h-10 rounded-lg bg-accent text-muted-foreground group-hover:bg-brand/20 group-hover:text-brand-300 flex items-center justify-center mb-4 transition-all duration-300">
+                  <div className="w-10 h-10 rounded-lg bg-accent text-muted-foreground group-hover:bg-brand/20 group-hover:text-brand-300 flex items-center justify-center mb-4 transition-all duration-300 icon-hover-bounce">
                     {feature.icon}
                   </div>
                   <h3 className="font-medium text-foreground mb-1.5 text-sm">{feature.title}</h3>

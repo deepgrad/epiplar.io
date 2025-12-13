@@ -52,8 +52,8 @@ export default function Login() {
                 required
                 autoComplete="email"
                 className="w-full px-3 py-2.5 bg-muted border border-border rounded-lg text-foreground
-                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20
-                           focus:border-foreground/50 transition-colors text-sm"
+                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/20
+                           focus:border-brand/50 transition-all duration-300 text-sm focus-glow"
                 placeholder="you@example.com"
               />
             </div>
@@ -70,8 +70,8 @@ export default function Login() {
                 required
                 autoComplete="current-password"
                 className="w-full px-3 py-2.5 bg-muted border border-border rounded-lg text-foreground
-                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20
-                           focus:border-foreground/50 transition-colors text-sm"
+                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/20
+                           focus:border-brand/50 transition-all duration-300 text-sm focus-glow"
                 placeholder="Enter your password"
               />
             </div>

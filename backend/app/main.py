@@ -74,9 +74,11 @@ app = FastAPI(
 
 # CORS middleware - added first (innermost layer)
 # Handles preflight OPTIONS and ensures CORS headers on all responses
+# Using allow_origin_regex to match localhost on any port for development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

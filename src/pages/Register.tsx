@@ -43,7 +43,7 @@ export default function Register() {
       <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-semibold text-foreground mb-2 opacity-0 animate-slide-up stagger-1">Create an account</h1>
-            <p className="text-sm text-muted-foreground opacity-0 animate-slide-up stagger-2">Get started with epipar.io</p>
+            <p className="text-sm text-muted-foreground opacity-0 animate-slide-up stagger-2">Get started with interia</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 opacity-0 animate-scale-in stagger-3">
@@ -65,8 +65,8 @@ export default function Register() {
                 required
                 autoComplete="email"
                 className="w-full px-3 py-2.5 bg-muted border border-border rounded-lg text-foreground
-                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20
-                           focus:border-foreground/50 transition-colors text-sm"
+                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/20
+                           focus:border-brand/50 transition-all duration-300 text-sm focus-glow"
                 placeholder="you@example.com"
               />
             </div>
@@ -83,8 +83,8 @@ export default function Register() {
                 required
                 autoComplete="username"
                 className="w-full px-3 py-2.5 bg-muted border border-border rounded-lg text-foreground
-                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20
-                           focus:border-foreground/50 transition-colors text-sm"
+                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/20
+                           focus:border-brand/50 transition-all duration-300 text-sm focus-glow"
                 placeholder="johndoe"
               />
             </div>
@@ -101,8 +101,8 @@ export default function Register() {
                 required
                 autoComplete="new-password"
                 className="w-full px-3 py-2.5 bg-muted border border-border rounded-lg text-foreground
-                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20
-                           focus:border-foreground/50 transition-colors text-sm"
+                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/20
+                           focus:border-brand/50 transition-all duration-300 text-sm focus-glow"
                 placeholder="At least 6 characters"
               />
             </div>
@@ -119,8 +119,8 @@ export default function Register() {
                 required
                 autoComplete="new-password"
                 className="w-full px-3 py-2.5 bg-muted border border-border rounded-lg text-foreground
-                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20
-                           focus:border-foreground/50 transition-colors text-sm"
+                           placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand/20
+                           focus:border-brand/50 transition-all duration-300 text-sm focus-glow"
                 placeholder="Confirm your password"
               />
             </div>

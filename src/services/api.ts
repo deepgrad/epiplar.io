@@ -20,7 +20,9 @@ const WS_BASE_URL = normalizeWsBaseUrl(import.meta.env.VITE_WS_URL || defaultWsB
 
 export function apiUrl(pathOrUrl: string): string {
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
-  return `${API_BASE_URL}${pathOrUrl}`;
+  const base = API_BASE_URL.replace(/\/+$/, ''); // Remove trailing slashes
+  const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return `${base}${path}`;
 }
 
 // Auth token management

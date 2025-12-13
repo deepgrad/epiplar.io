@@ -6,7 +6,7 @@ const plans = [
     name: 'Free',
     price: '$0',
     period: 'forever',
-    description: 'Perfect for trying out epipar.io',
+    description: 'Perfect for trying out interia',
     features: [
       '3 room scans per month',
       'Basic 3D reconstruction',
@@ -87,8 +87,8 @@ export default function Pricing() {
                 key={plan.name}
                 className={`relative p-6 sm:p-8 rounded-xl border transition-all duration-300 hover-lift opacity-0 animate-slide-up overflow-visible ${
                   plan.popular
-                    ? 'bg-muted border-brand/40 md:scale-[1.02]'
-                    : 'bg-muted/50 border-border/50 hover:border-border card-shine'
+                    ? 'bg-muted border-brand/40 md:scale-[1.02] shadow-[0_0_20px_rgba(74,63,153,0.15)]'
+                    : 'bg-muted/50 border-border/50 hover:border-border card-shine border-hover-glow'
                 }`}
                 style={{ animationDelay: `${0.3 + index * 0.1}s` }}
               >
@@ -109,7 +109,7 @@ export default function Pricing() {
                   <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
                 </div>
 
-                <ul className="space-y-3 mb-8">
+                <ul className="space-y-3 mb-8 stagger-children">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3 text-sm">
                       <svg className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -122,7 +122,7 @@ export default function Pricing() {
 
                 <button
                   onClick={() => handleSelectPlan(plan)}
-                  className={`w-full py-3 rounded-lg font-medium text-sm transition-all duration-300 btn-press ${
+                  className={`w-full py-3 rounded-lg font-medium text-sm transition-all duration-300 btn-press btn-bounce ${
                     plan.popular
                       ? 'bg-brand hover:bg-brand-500 text-white brand-glow'
                       : 'bg-accent hover:bg-accent/80 text-foreground border border-border'
@@ -160,7 +160,7 @@ export default function Pricing() {
               ].map((faq, index) => (
                 <div
                   key={faq.q}
-                  className="p-5 rounded-xl bg-muted/50 border border-border/50 hover:border-border transition-all duration-300 hover-lift opacity-0 animate-slide-up"
+                  className="p-5 rounded-xl bg-muted/50 border border-border/50 hover:border-border transition-all duration-300 hover-lift opacity-0 animate-slide-up border-hover-glow"
                   style={{ animationDelay: `${0.7 + index * 0.1}s` }}
                 >
                   <h3 className="text-sm font-medium text-foreground mb-2">{faq.q}</h3>
