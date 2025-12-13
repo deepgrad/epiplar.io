@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 from pathlib import Path
 import asyncio
 import logging
@@ -139,6 +140,41 @@ async def get_result(job_id: str) -> ProcessingResult:
         raise HTTPException(400, f"Job not completed. Status: {job['status']}")
 
     return ProcessingResult(**job["result"])
+
+@router.get("/assets/{job_id}/{filename}")
+async def get_job_asset(job_id: str, filename: str):
+    """Download or stream a generated job asset (e.g., room.glb)."""
+    if job_id not in jobs:
+        raise HTTPException(404, "Job not found")
+
+    job_dir = (settings.temp_dir / job_id).resolve()
+    asset_path = (job_dir / filename).resolve()
+
+    # Prevent path traversal
+    if job_dir not in asset_path.parents and asset_path != job_dir:
+        raise HTTPException(400, "Invalid asset path")
+
+    if not asset_path.exists() or not asset_path.is_file():
+        raise HTTPException(404, "Asset not found")
+
+    # Best-effort media type
+    suffix = asset_path.suffix.lower()
+    media_type = {
+        ".glb": "model/gltf-binary",
+        ".gltf": "model/gltf+json",
+        ".ply": "application/octet-stream",
+        ".obj": "text/plain",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".mp4": "video/mp4",
+    }.get(suffix, "application/octet-stream")
+
+    return FileResponse(
+        str(asset_path),
+        media_type=media_type,
+        filename=filename,
+    )
 
 @router.delete("/job/{job_id}")
 async def cancel_job(job_id: str):

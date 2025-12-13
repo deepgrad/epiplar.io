@@ -1,11 +1,12 @@
 import torch
 import numpy as np
 import base64
+import asyncio
 from typing import Callable, Optional
 from pathlib import Path
 import logging
 
-from ..models.schemas import ProgressUpdate, DepthFrame, CameraParameters, ProcessingResult
+from ..models.schemas import ProgressUpdate, DepthFrame, CameraParameters, ModelAsset, ProcessingResult
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,145 @@ class DepthService:
     def _encode_array(self, arr: np.ndarray) -> str:
         """Encode numpy array as base64."""
         return base64.b64encode(arr.astype(np.float32).tobytes()).decode('utf-8')
+
+    @staticmethod
+    def _as_homogeneous44(ext: np.ndarray) -> np.ndarray:
+        """Accept (4,4) or (3,4) extrinsic parameters, return (4,4) homogeneous matrix."""
+        if ext.shape == (4, 4):
+            return ext
+        if ext.shape == (3, 4):
+            H = np.eye(4, dtype=ext.dtype)
+            H[:3, :4] = ext
+            return H
+        raise ValueError(f"extrinsic must be (4,4) or (3,4), got {ext.shape}")
+
+    def _export_tsdf_mesh_glb_sync(self, prediction, out_path: Path) -> None:
+        """
+        Fuse multi-view depth into a single TSDF mesh and export to GLB.
+
+        Notes:
+        - Uses DA3's predicted intrinsics/extrinsics (world-to-camera) and processed_images.
+        - Output is a single, unified triangle mesh (not per-frame point clouds).
+        """
+        try:
+            import open3d as o3d
+        except ImportError as e:
+            raise RuntimeError("open3d is required for mesh reconstruction (installed via Depth-Anything-3).") from e
+
+        depth = getattr(prediction, "depth", None)
+        intrinsics = getattr(prediction, "intrinsics", None)
+        extrinsics = getattr(prediction, "extrinsics", None)
+        images = getattr(prediction, "processed_images", None)
+
+        if depth is None or intrinsics is None or extrinsics is None:
+            raise RuntimeError("DA3 prediction missing depth/intrinsics/extrinsics; cannot reconstruct mesh.")
+        if images is None:
+            raise RuntimeError("DA3 prediction missing processed_images; cannot reconstruct colored mesh.")
+
+        if depth.ndim != 3:
+            raise ValueError(f"Expected depth with shape (N,H,W), got {depth.shape}")
+        N, H, W = depth.shape
+
+        # Use intrinsics from the first view (DA3 returns (N,3,3); typically identical across views)
+        K0 = np.asarray(intrinsics[0], dtype=np.float64)
+        fx, fy = float(K0[0, 0]), float(K0[1, 1])
+        cx, cy = float(K0[0, 2]), float(K0[1, 2])
+        intrinsic_o3d = o3d.camera.PinholeCameraIntrinsic(W, H, fx, fy, cx, cy)
+
+        # Heuristic TSDF parameters based on predicted depth distribution (units may be arbitrary but consistent)
+        d0 = np.asarray(depth[0], dtype=np.float32)
+        valid0 = np.isfinite(d0) & (d0 > 0)
+        if valid0.any():
+            median_depth = float(np.median(d0[valid0]))
+            p95_depth = float(np.percentile(d0[valid0], 95))
+        else:
+            median_depth, p95_depth = 1.0, 3.0
+
+        voxel_length = float(np.clip(median_depth / 200.0, 0.002, 0.05))
+        sdf_trunc = voxel_length * 5.0
+        depth_trunc = float(max(p95_depth, median_depth * 1.5))
+
+        volume = o3d.pipelines.integration.ScalableTSDFVolume(
+            voxel_length=voxel_length,
+            sdf_trunc=sdf_trunc,
+            color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
+        )
+
+        for i in range(N):
+            color_np = np.asarray(images[i], dtype=np.uint8)
+            depth_np = np.asarray(depth[i], dtype=np.float32)
+
+            if color_np.shape[:2] != (H, W):
+                # Safety: keep depth+color aligned
+                raise ValueError(f"processed_images size mismatch for view {i}: {color_np.shape} vs depth {(H, W)}")
+
+            color_o3d = o3d.geometry.Image(color_np)
+            depth_o3d = o3d.geometry.Image(depth_np)
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                color_o3d,
+                depth_o3d,
+                depth_scale=1.0,
+                depth_trunc=depth_trunc,
+                convert_rgb_to_intensity=False,
+            )
+
+            ext_w2c = self._as_homogeneous44(np.asarray(extrinsics[i], dtype=np.float64))
+            volume.integrate(rgbd, intrinsic_o3d, ext_w2c)
+
+        mesh = volume.extract_triangle_mesh()
+        if len(mesh.vertices) == 0 or len(mesh.triangles) == 0:
+            raise RuntimeError("TSDF reconstruction produced an empty mesh.")
+
+        # Basic cleanup + normals for nicer shading
+        mesh.remove_degenerate_triangles()
+        mesh.remove_duplicated_triangles()
+        mesh.remove_duplicated_vertices()
+        mesh.remove_non_manifold_edges()
+        mesh.compute_vertex_normals()
+
+        # Decimate to keep browser-friendly file sizes
+        target_tris = 200_000
+        if len(mesh.triangles) > target_tris:
+            mesh = mesh.simplify_quadric_decimation(target_tris)
+            mesh.remove_degenerate_triangles()
+            mesh.remove_duplicated_triangles()
+            mesh.remove_duplicated_vertices()
+            mesh.remove_non_manifold_edges()
+            mesh.compute_vertex_normals()
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Prefer Open3D native writer (supports glTF/glb on recent versions); fall back to trimesh if needed.
+        try:
+            o3d.io.write_triangle_mesh(str(out_path), mesh, write_vertex_colors=True)
+        except Exception:
+            try:
+                import trimesh
+            except ImportError as e:
+                raise RuntimeError("Failed to export mesh via Open3D and trimesh is unavailable.") from e
+
+            verts = np.asarray(mesh.vertices)
+            faces = np.asarray(mesh.triangles)
+            vcols = np.asarray(mesh.vertex_colors) if len(mesh.vertex_colors) else None
+            if vcols is not None and vcols.size:
+                vcols_u8 = np.clip(vcols * 255.0, 0, 255).astype(np.uint8)
+            else:
+                vcols_u8 = None
+
+            tm = trimesh.Trimesh(vertices=verts, faces=faces, vertex_colors=vcols_u8, process=False)
+            tm.export(str(out_path))
+
+    async def _export_room_mesh_asset(self, prediction, job_id: str) -> ModelAsset:
+        """Export a unified room mesh for this job and return a ModelAsset descriptor."""
+        job_dir = settings.temp_dir / job_id
+        out_filename = "room.glb"
+        out_path = job_dir / out_filename
+        await asyncio.to_thread(self._export_tsdf_mesh_glb_sync, prediction, out_path)
+        return ModelAsset(
+            filename=out_filename,
+            url=f"/api/assets/{job_id}/{out_filename}",
+            format="glb",
+        )
 
     async def estimate_depth(
         self,
@@ -103,6 +243,43 @@ class DepthService:
             extrinsics = getattr(prediction, 'extrinsics', None)  # [N, 3, 4]
             intrinsics = getattr(prediction, 'intrinsics', None)  # [N, 3, 3]
 
+            # Reconstruct a single unified 3D mesh model (best-effort; falls back to DA3 point cloud GLB export)
+            model_asset: ModelAsset | None = None
+            try:
+                if progress_callback:
+                    progress_callback(ProgressUpdate(
+                        stage="Reconstructing 3D model",
+                        progress=85.0,
+                        message="Fusing frames into a single 3D mesh..."
+                    ))
+                model_asset = await self._export_room_mesh_asset(prediction, job_id)
+                if progress_callback:
+                    progress_callback(ProgressUpdate(
+                        stage="Reconstructing 3D model",
+                        progress=92.0,
+                        message=f"3D mesh exported ({model_asset.format})"
+                    ))
+            except Exception as e:
+                logger.exception(f"Mesh reconstruction failed for job {job_id}: {e}")
+                # Fallback: DA3's native GLB export (fused point cloud, not a mesh)
+                try:
+                    from depth_anything_3.utils.export import export as da3_export
+                    job_dir = settings.temp_dir / job_id
+                    da3_export(prediction, "glb", str(job_dir), glb={"show_cameras": False})
+                    model_asset = ModelAsset(
+                        filename="scene.glb",
+                        url=f"/api/assets/{job_id}/scene.glb",
+                        format="glb",
+                    )
+                    if progress_callback:
+                        progress_callback(ProgressUpdate(
+                            stage="Reconstructing 3D model",
+                            progress=92.0,
+                            message="Mesh failed; exported fused point cloud instead"
+                        ))
+                except Exception as e2:
+                    logger.exception(f"Fallback GLB export also failed for job {job_id}: {e2}")
+
             # Convert to serializable format
             depth_frames = []
             for i in range(len(frames)):
@@ -147,6 +324,7 @@ class DepthService:
                 job_id=job_id,
                 frames=depth_frames,
                 camera_params=camera_params,
+                model_asset=model_asset,
                 original_width=original_width,
                 original_height=original_height,
                 model_used=settings.model_name,

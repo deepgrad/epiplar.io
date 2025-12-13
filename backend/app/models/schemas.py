@@ -23,10 +23,17 @@ class CameraParameters(BaseModel):
     extrinsics: list[list[list[float]]]  # [N, 3, 4]
     intrinsics: list[list[list[float]]]  # [N, 3, 3]
 
+class ModelAsset(BaseModel):
+    """A generated 3D asset (mesh/point cloud) stored for a job."""
+    filename: str
+    url: str  # relative URL (frontend should prefix with API base URL)
+    format: str  # e.g. "glb", "ply"
+
 class ProcessingResult(BaseModel):
     job_id: str
     frames: list[DepthFrame]
     camera_params: Optional[CameraParameters] = None
+    model_asset: Optional[ModelAsset] = None
     original_width: int
     original_height: int
     model_used: str

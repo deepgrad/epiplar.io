@@ -2,8 +2,13 @@
  * API client for communicating with the Depth Anything V3 backend
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+
+export function apiUrl(pathOrUrl: string): string {
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
+  return `${API_BASE_URL}${pathOrUrl}`;
+}
 
 // Types matching backend schemas
 export interface ProgressUpdate {
@@ -27,10 +32,17 @@ export interface CameraParameters {
   intrinsics: number[][][]; // [N, 3, 3]
 }
 
+export interface ModelAsset {
+  filename: string;
+  url: string; // relative URL from backend
+  format: string; // "glb", "ply", ...
+}
+
 export interface ProcessingResult {
   job_id: string;
   frames: DepthFrame[];
   camera_params: CameraParameters | null;
+  model_asset?: ModelAsset | null;
   original_width: number;
   original_height: number;
   model_used: string;

@@ -1,77 +1,25 @@
-import { useState, useMemo } from 'react'
-import { DepthEstimationResult, depthToPointCloud } from '../services/depthEstimation'
-import PointCloudViewer from './PointCloudViewer'
+import { useState } from 'react'
+import { DepthEstimationResult } from '../services/depthEstimation'
+import ModelViewer from './ModelViewer'
 import DepthMapViewer from './DepthMapViewer'
+import { apiUrl, ModelAsset } from '../services/api'
 
 interface ResultsPreviewProps {
   onReset: () => void
   depthResults: DepthEstimationResult[]
   originalFrames?: HTMLCanvasElement[]
+  modelAsset?: ModelAsset | null
 }
 
-type ViewMode = '3d' | 'depth' | 'combined'
+type ViewMode = 'model' | 'depth'
 
-export default function ResultsPreview({ onReset, depthResults, originalFrames = [] }: ResultsPreviewProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('3d')
-  const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
-
-  // Generate point cloud data from the selected frame
-  const pointCloudData = useMemo(() => {
-    if (depthResults.length === 0) return null
-
-    const selectedResult = depthResults[selectedFrameIndex] || depthResults[0]
-    const selectedFrame = originalFrames[selectedFrameIndex]
-
-    // Get RGB data if available
-    let rgbData: Uint8ClampedArray | undefined
-    if (selectedFrame) {
-      const ctx = selectedFrame.getContext('2d')
-      if (ctx) {
-        const imageData = ctx.getImageData(0, 0, selectedFrame.width, selectedFrame.height)
-        rgbData = imageData.data
-      }
-    }
-
-    return depthToPointCloud(selectedResult, rgbData)
-  }, [depthResults, originalFrames, selectedFrameIndex])
-
-  // Combined point cloud from multiple frames
-  const combinedPointCloudData = useMemo(() => {
-    if (depthResults.length < 2) return pointCloudData
-
-    // Combine first few frames for a denser point cloud
-    const maxFramesToCombine = Math.min(5, depthResults.length)
-    const allPositions: number[] = []
-    const allColors: number[] = []
-
-    for (let i = 0; i < maxFramesToCombine; i++) {
-      const result = depthResults[i]
-      const frame = originalFrames[i]
-
-      let rgbData: Uint8ClampedArray | undefined
-      if (frame) {
-        const ctx = frame.getContext('2d')
-        if (ctx) {
-          const imageData = ctx.getImageData(0, 0, frame.width, frame.height)
-          rgbData = imageData.data
-        }
-      }
-
-      const { positions, colors } = depthToPointCloud(result, rgbData, 500, 10000)
-
-      // Add offset for each frame to simulate camera movement
-      const offsetZ = i * 0.5
-      for (let j = 0; j < positions.length; j += 3) {
-        allPositions.push(positions[j], positions[j + 1], positions[j + 2] - offsetZ)
-        allColors.push(colors[j], colors[j + 1], colors[j + 2])
-      }
-    }
-
-    return {
-      positions: new Float32Array(allPositions),
-      colors: new Float32Array(allColors),
-    }
-  }, [depthResults, originalFrames, pointCloudData])
+export default function ResultsPreview({
+  onReset,
+  depthResults,
+  originalFrames = [],
+  modelAsset = null,
+}: ResultsPreviewProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('model')
 
   if (depthResults.length === 0) {
     return (
@@ -101,7 +49,7 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
           Your 3D Room Reconstruction
         </h2>
         <p className="text-sm sm:text-base text-slate-500">
-          Analyzed {depthResults.length} frames using Depth Anything V2
+          Fused {depthResults.length} frames into a single 3D model using Depth Anything 3
         </p>
       </div>
 
@@ -109,14 +57,14 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
       <div className="flex justify-center mb-6">
         <div className="inline-flex bg-slate-100 p-1 rounded-xl">
           <button
-            onClick={() => setViewMode('3d')}
+            onClick={() => setViewMode('model')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              viewMode === '3d'
+              viewMode === 'model'
                 ? 'bg-white text-slate-800 shadow-sm'
                 : 'text-slate-600 hover:text-slate-800'
             }`}
           >
-            3D Point Cloud
+            3D Model
           </button>
           <button
             onClick={() => setViewMode('depth')}
@@ -128,30 +76,20 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
           >
             Depth Maps
           </button>
-          {depthResults.length > 1 && (
-            <button
-              onClick={() => setViewMode('combined')}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                viewMode === 'combined'
-                  ? 'bg-white text-slate-800 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              Combined View
-            </button>
-          )}
         </div>
       </div>
 
       {/* Main Visualization */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        {viewMode === '3d' && pointCloudData && (
+        {viewMode === 'model' && (
           <div className="aspect-video">
-            <PointCloudViewer
-              positions={pointCloudData.positions}
-              colors={pointCloudData.colors}
-              className="w-full h-full"
-            />
+            {modelAsset?.url ? (
+              <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+            ) : (
+              <div className="w-full h-full min-h-[300px] flex items-center justify-center text-slate-500">
+                No 3D model was generated for this run.
+              </div>
+            )}
           </div>
         )}
 
@@ -162,43 +100,7 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
           />
         )}
 
-        {viewMode === 'combined' && combinedPointCloudData && (
-          <div className="aspect-video">
-            <PointCloudViewer
-              positions={combinedPointCloudData.positions}
-              colors={combinedPointCloudData.colors}
-              className="w-full h-full"
-            />
-          </div>
-        )}
       </div>
-
-      {/* Frame Selection (for 3D view) */}
-      {viewMode === '3d' && depthResults.length > 1 && (
-        <div className="mt-4 bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-slate-700">Select Frame</span>
-            <span className="text-sm text-slate-500">
-              Frame {selectedFrameIndex + 1} of {depthResults.length}
-            </span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {depthResults.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setSelectedFrameIndex(index)}
-                className={`flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center text-sm font-medium transition-colors ${
-                  selectedFrameIndex === index
-                    ? 'bg-primary-500 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {index + 1}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
@@ -208,9 +110,9 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <p className="text-2xl font-bold text-primary-600">
-            {pointCloudData ? Math.floor(pointCloudData.positions.length / 3).toLocaleString() : 0}
+            {modelAsset?.format?.toUpperCase?.() || '—'}
           </p>
-          <p className="text-sm text-slate-500">3D Points</p>
+          <p className="text-sm text-slate-500">Model Format</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <p className="text-2xl font-bold text-primary-600">
@@ -219,7 +121,7 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
           <p className="text-sm text-slate-500">Resolution</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <p className="text-2xl font-bold text-green-600">DA2</p>
+          <p className="text-2xl font-bold text-green-600">DA3</p>
           <p className="text-sm text-slate-500">Model Used</p>
         </div>
       </div>
@@ -232,37 +134,20 @@ export default function ResultsPreview({ onReset, depthResults, originalFrames =
         >
           Process Another Video
         </button>
-        <button
-          onClick={() => {
-            // Export point cloud data as JSON
-            if (pointCloudData) {
-              const data = {
-                positions: Array.from(pointCloudData.positions),
-                colors: Array.from(pointCloudData.colors),
-                frameCount: depthResults.length,
-                resolution: {
-                  width: depthResults[0]?.width,
-                  height: depthResults[0]?.height,
-                },
-              }
-              const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = 'room-pointcloud.json'
-              a.click()
-              URL.revokeObjectURL(url)
-            }
-          }}
-          className="w-full sm:w-auto px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-xl transition-colors"
-        >
-          Export Point Cloud
-        </button>
+        {modelAsset?.url && (
+          <a
+            href={apiUrl(modelAsset.url)}
+            className="w-full sm:w-auto px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-xl transition-colors text-center"
+            download={modelAsset.filename || undefined}
+          >
+            Download 3D Model
+          </a>
+        )}
       </div>
 
       {/* Info */}
       <p className="text-center text-sm text-slate-400 mt-6">
-        Powered by Depth Anything V2 - Monocular Depth Estimation
+        Powered by Depth Anything 3 - Multi-view depth + fusion
       </p>
     </div>
   )

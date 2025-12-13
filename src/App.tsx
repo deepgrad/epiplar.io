@@ -7,13 +7,13 @@ import {
   ProcessingProgress,
   convertBackendResult,
   extractVideoFrames,
-  CameraParameters,
 } from './services/depthEstimation'
 import {
   uploadVideo,
   startProcessing,
   connectProgressWebSocket,
   cancelJob,
+  ModelAsset,
 } from './services/api'
 
 type AppState = 'upload' | 'processing' | 'results' | 'error'
@@ -26,7 +26,7 @@ function App() {
   const [depthResults, setDepthResults] = useState<DepthEstimationResult[]>([])
   const [originalFrames, setOriginalFrames] = useState<HTMLCanvasElement[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [cameraParams, setCameraParams] = useState<CameraParameters | null>(null)
+  const [modelAsset, setModelAsset] = useState<ModelAsset | null>(null)
   const jobIdRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -70,7 +70,7 @@ function App() {
 
           setDepthResults(depthResults)
           setOriginalFrames(frames)
-          setCameraParams(result.camera_params)
+          setModelAsset(result.model_asset ?? null)
           setProcessingProgress({ stage: 'Complete', progress: 100 })
 
           setTimeout(() => {
@@ -86,7 +86,7 @@ function App() {
       wsRef.current = ws
 
       // 4. Start processing on backend
-      await startProcessing(jobId, { maxFrames: 8, frameInterval: 30 })
+      await startProcessing(jobId, { maxFrames: 16, frameInterval: 30 })
 
     } catch (error) {
       console.error('Processing error:', error)
@@ -123,7 +123,7 @@ function App() {
     setOriginalFrames([])
     setProcessingProgress(null)
     setErrorMessage(null)
-    setCameraParams(null)
+    setModelAsset(null)
     jobIdRef.current = null
     if (wsRef.current) {
       wsRef.current.close()
@@ -299,6 +299,7 @@ function App() {
             onReset={handleReset}
             depthResults={depthResults}
             originalFrames={originalFrames}
+            modelAsset={modelAsset}
           />
         )}
 
