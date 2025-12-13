@@ -377,11 +377,11 @@ class DepthService:
 
         logger.warning("Falling back to TSDF mesh export (GLB) because native export failed or wasn't found.")
         await asyncio.to_thread(self._export_tsdf_mesh_glb_sync, prediction, out_path)
-        
+
         return ModelAsset(
             filename=out_filename,
             url=f"/api/assets/{job_id}/{out_filename}",
-            format=fallback_format,
+            format="glb",
         )
 
     async def estimate_depth(
@@ -463,6 +463,44 @@ class DepthService:
             conf_maps = getattr(prediction, 'conf', None)  # [N, H, W] if available
             extrinsics = getattr(prediction, 'extrinsics', None)  # [N, 3, 4]
             intrinsics = getattr(prediction, 'intrinsics', None)  # [N, 3, 3]
+
+            # Depth completion - fill holes in depth maps
+            if settings.enable_depth_completion:
+                if progress_callback:
+                    progress_callback(ProgressUpdate(
+                        stage="Enhancing depth",
+                        progress=81.0,
+                        message="Filling depth map holes..."
+                    ))
+
+                try:
+                    from .depth_completion import DepthCompletion
+
+                    completer = DepthCompletion(
+                        extrapolate=settings.completion_extrapolate,
+                        blur_type=settings.completion_blur_type,
+                    )
+
+                    enhanced_depth = completer.complete_batch(
+                        depth_maps,
+                        confidence_maps=conf_maps,
+                        conf_threshold=settings.completion_conf_threshold,
+                    )
+
+                    # Update prediction with enhanced depth
+                    prediction.depth = enhanced_depth
+                    depth_maps = enhanced_depth
+
+                    logger.info(f"Depth completion applied to {len(depth_maps)} frames")
+
+                    if progress_callback:
+                        progress_callback(ProgressUpdate(
+                            stage="Enhancing depth",
+                            progress=82.0,
+                            message="Depth enhancement complete"
+                        ))
+                except Exception as e:
+                    logger.warning(f"Depth completion failed, using original depth: {e}")
 
             # Export 3D model - use LOD system if enabled
             model_asset: ModelAsset | None = None

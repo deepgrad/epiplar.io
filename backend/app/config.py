@@ -41,8 +41,19 @@ class Settings(BaseSettings):
     enable_draco: bool = True
     draco_compression_level: int = 7  # 1-10, higher = smaller files but slower
 
+    # Depth Completion - fills holes in depth maps using ip_basic algorithm
+    # Performance: ~90 FPS (0.011s per frame) using CPU/OpenCV
+    enable_depth_completion: bool = True
+    completion_conf_threshold: float = 0.3  # Confidence below this = needs filling
+    completion_extrapolate: bool = True     # Fill top regions (ceiling in room scans)
+    completion_blur_type: str = "bilateral" # "bilateral" (edge-preserving) or "gaussian" (faster)
+
     temp_dir: Path = Path("/tmp/garaza")
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    
+    # Cleanup settings
+    auto_cleanup_after_completion: bool = False  # Automatically delete job files after completion
+    auto_cleanup_after_hours: float = 24.0  # Auto-delete jobs older than this (if auto_cleanup enabled)
 
     class Config:
         env_prefix = "GARAZA_"

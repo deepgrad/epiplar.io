@@ -1,13 +1,14 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
 from pathlib import Path
 import asyncio
 import logging
+from typing import Optional
 
 from ..models.schemas import ProcessVideoRequest, ProcessingResult, JobStatus, ProgressUpdate
 from ..services.depth_service import depth_service
 from ..services.video_service import video_service
-from ..utils.file_utils import save_upload_file, cleanup_job
+from ..utils.file_utils import save_upload_file, cleanup_job, get_disk_usage, get_job_directories, cleanup_old_jobs
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,11 @@ async def process_video_task(
         jobs[job_id]["result"] = result.model_dump()
 
         logger.info(f"Job completed: {job_id}")
+        
+        # Auto-cleanup if enabled
+        if settings.auto_cleanup_after_completion:
+            logger.info(f"Auto-cleaning up job {job_id} after completion")
+            cleanup_job(job_id)
 
     except Exception as e:
         logger.error(f"Job failed: {job_id} - {e}")
@@ -191,3 +197,46 @@ async def cancel_job(job_id: str):
     del jobs[job_id]
 
     return {"status": "deleted"}
+
+@router.get("/admin/disk-usage")
+async def get_disk_usage_info():
+    """Get disk usage information for the temp directory."""
+    disk_info = get_disk_usage(settings.temp_dir)
+    job_dirs = get_job_directories()
+    
+    total_job_size = sum(j["size_bytes"] for j in job_dirs)
+    
+    return {
+        "disk": disk_info,
+        "temp_dir": str(settings.temp_dir),
+        "job_count": len(job_dirs),
+        "total_job_size_gb": round(total_job_size / (1024**3), 4),
+    }
+
+@router.get("/admin/jobs")
+async def list_jobs_on_disk():
+    """List all job directories on disk with their sizes."""
+    return {
+        "jobs": get_job_directories(),
+        "count": len(get_job_directories()),
+    }
+
+@router.post("/admin/cleanup")
+async def cleanup_jobs(
+    max_age_hours: Optional[float] = Query(None, description="Only delete jobs older than this (hours). If not provided, deletes all jobs."),
+    dry_run: bool = Query(False, description="If true, only show what would be deleted without actually deleting."),
+):
+    """
+    Clean up old job directories to free disk space.
+    
+    WARNING: This will permanently delete job files!
+    """
+    result = cleanup_old_jobs(max_age_hours=max_age_hours, dry_run=dry_run)
+    
+    # Get updated disk usage
+    disk_info = get_disk_usage(settings.temp_dir)
+    
+    return {
+        **result,
+        "disk_usage_after": disk_info,
+    }
