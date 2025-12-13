@@ -10,10 +10,10 @@ class Settings(BaseSettings):
     max_frames: int = 128  # More frames = better reconstruction (adaptive interval)
 
     # Quality settings
-    process_resolution: int = 756  # Higher = more detail (504, 756, 1008)
+    process_resolution: int = 1008  # Higher = more detail (504, 756, 1008)
     use_ray_pose: bool = True  # Better camera pose accuracy (+44%)
-    num_max_points: int = 1_000_000  # Maximum points in output
-    conf_thresh_percentile: float = 30.0  # Lower = more points (less filtering)
+    num_max_points: int = 2_000_000  # Maximum points in output
+    conf_thresh_percentile: float = 10.0  # Lower = more points (less filtering)
 
     # Export settings - GLB point cloud only
     export_format: str = "glb"

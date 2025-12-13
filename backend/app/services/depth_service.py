@@ -99,7 +99,7 @@ class DepthService:
 
         voxel_length = float(np.clip(median_depth / 200.0, 0.002, 0.05))
         sdf_trunc = voxel_length * 5.0
-        depth_trunc = float(max(p95_depth, median_depth * 1.5))
+        depth_trunc = float(max(p95_depth * 1.5, median_depth * 3.0))
 
         volume = o3d.pipelines.integration.ScalableTSDFVolume(
             voxel_length=voxel_length,
