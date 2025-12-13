@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 
 interface SplatViewerProps {
@@ -12,52 +10,48 @@ export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !url) return;
 
     const container = containerRef.current;
-    
-    // Initialize the viewer
-    // The library handles the scene, camera, and renderer internally if not provided,
-    // but we want to control the container.
-    const viewer = new GaussianSplats3D.Viewer({
-      'rootElement': container,
-      'cameraUp': [0, 1, 0],
-      'initialCameraPosition': [0, 1.5, 3],
-      'initialCameraLookAt': [0, 0, 0],
-      'gpuAcceleratedSort': true,
-      'halfPrecisionCovariancesOnGPU': true,
-    });
-    
-    viewerRef.current = viewer;
 
-    return () => {
-      viewer.dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!viewerRef.current || !url) return;
-
-    const loadSplat = async () => {
+    // Dispose previous viewer if it exists
+    if (viewerRef.current) {
       try {
-        setLoading(true);
-        setLoadError(null);
-        
-        // Remove any existing scenes
-        if (viewerRef.current.getSplatSceneCount() > 0) {
-            viewerRef.current.removeSplatScene(0);
-        }
+        viewerRef.current.dispose();
+      } catch (e) {
+        // Ignore disposal errors
+      }
+      viewerRef.current = null;
+    }
 
-        await viewerRef.current.addSplatScene(url, {
+    setLoading(true);
+    setLoadError(null);
+
+    // Create viewer and load scene
+    const initViewer = async () => {
+      try {
+        const viewer = new GaussianSplats3D.Viewer({
+          'rootElement': container,
+          'cameraUp': [0, 1, 0],
+          'initialCameraPosition': [0, 1.5, 3],
+          'initialCameraLookAt': [0, 0, 0],
+          'gpuAcceleratedSort': true,
+          'halfPrecisionCovariancesOnGPU': true,
+        });
+
+        viewerRef.current = viewer;
+
+        await viewer.addSplatScene(url, {
           'showLoadingUI': false,
           'position': [0, 0, 0],
-          'rotation': [0, 0, 0],
+          'rotation': [0, 0, 0, 1],
           'scale': [1, 1, 1]
         });
-        
+
+        viewer.start();
         setLoading(false);
       } catch (err: any) {
         console.error("Failed to load splat scene:", err);
@@ -66,7 +60,18 @@ export default function SplatViewer({ url, className = '' }: SplatViewerProps) {
       }
     };
 
-    loadSplat();
+    initViewer();
+
+    return () => {
+      if (viewerRef.current) {
+        try {
+          viewerRef.current.dispose();
+        } catch (e) {
+          // Ignore disposal errors
+        }
+        viewerRef.current = null;
+      }
+    };
   }, [url]);
 
   return (

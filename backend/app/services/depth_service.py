@@ -346,12 +346,14 @@ class DepthService:
                 # Calculate relative path from job_dir for proper URL
                 try:
                     rel_path = exported_file.relative_to(job_dir)
+                    # Convert to forward slashes for URL (handles Windows paths)
+                    rel_path_str = str(rel_path).replace("\\", "/")
                 except ValueError:
-                    rel_path = exported_file.name
+                    rel_path_str = exported_file.name
 
                 model_asset = ModelAsset(
                     filename=exported_file.name,
-                    url=f"/api/assets/{job_id}/{rel_path}",
+                    url=f"/api/assets/{job_id}/{rel_path_str}",
                     format=exported_file.suffix[1:],  # Remove the dot
                 )
                 logger.info(f"DA3 exported model: {exported_file}")
