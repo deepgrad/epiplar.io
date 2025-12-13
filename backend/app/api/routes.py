@@ -143,7 +143,7 @@ async def get_result(job_id: str) -> ProcessingResult:
 
 @router.get("/assets/{job_id}/{file_path:path}")
 async def get_job_asset(job_id: str, file_path: str):
-    """Download or stream a generated job asset (e.g., room.glb, gs_ply/0000.ply)."""
+    """Download or stream a generated job asset (e.g., scene.glb)."""
     if job_id not in jobs:
         raise HTTPException(404, "Job not found")
 

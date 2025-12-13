@@ -6,7 +6,6 @@
       "name": "garaza",
       "dependencies": {
         "@huggingface/transformers": "^3.8.1",
-        "@mkkellogg/gaussian-splats-3d": "^0.4.7",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
         "three": "^0.182.0",
@@ -218,8 +217,6 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
-
-    "@mkkellogg/gaussian-splats-3d": ["@mkkellogg/gaussian-splats-3d@0.4.7", "", { "peerDependencies": { "three": ">=0.160.0" } }, "sha512-0vy9/i9sJLFH/v3WJZ4axCsqjkToe8UsV3xY7bvK5EUC0akiRsWZODoCiSzpxhTLNyzSKTsyQKozIFeNA5RWRA=="],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 

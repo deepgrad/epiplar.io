@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.1-cudnn8-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies (including build tools for gsplat)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.11 \
     python3.11-pip \
@@ -14,8 +14,6 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     git \
-    build-essential \
-    ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 # Set python3.11 as default
@@ -36,10 +34,6 @@ RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Install depth-anything-3 from git
 RUN pip install --no-cache-dir git+https://github.com/ByteDance-Seed/Depth-Anything-3.git
-
-# Install gsplat for Gaussian Splatting PLY export (gs_ply format)
-# This specific commit is recommended by Depth Anything 3 for the gaussian head
-RUN pip install --no-cache-dir --no-build-isolation git+https://github.com/nerfstudio-project/gsplat.git@0b4dddf04cb687367602c01196913cde6a743d70
 
 # Copy application code
 COPY app/ ./app/

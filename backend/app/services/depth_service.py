@@ -174,14 +174,11 @@ class DepthService:
     async def _export_room_mesh_asset(self, prediction, job_id: str) -> ModelAsset:
         """Export a unified room mesh for this job and return a ModelAsset descriptor."""
         job_dir = settings.temp_dir / job_id
-        
-        # If the requested format is 'gs' but we are falling back to TSDF, we must force GLB/PLY
-        # because TSDF cannot produce Gaussian Splats.
-        fallback_format = "glb"
-        out_filename = f"room.{fallback_format}"
+
+        out_filename = "room.glb"
         out_path = job_dir / out_filename
-        
-        logger.warning(f"Falling back to TSDF mesh export ({fallback_format}) because native export failed or wasn't found.")
+
+        logger.warning("Falling back to TSDF mesh export (GLB) because native export failed or wasn't found.")
         await asyncio.to_thread(self._export_tsdf_mesh_glb_sync, prediction, out_path)
         
         return ModelAsset(
@@ -236,20 +233,17 @@ class DepthService:
 
             logger.info(f"Running DA3 inference with: model={settings.model_name}, "
                        f"process_res={settings.process_resolution}, "
-                       f"use_ray_pose={settings.use_ray_pose}, "
-                       f"infer_gs={settings.enable_gaussian_splatting}")
+                       f"use_ray_pose={settings.use_ray_pose}")
 
-            # Use DA3's native export for best quality
+            # Use DA3's native export for best quality (GLB point cloud only)
             prediction = self._model.inference(
                 frames,
                 process_res=settings.process_resolution,
-                # Enable Gaussian Splatting for photorealistic output
-                infer_gs=settings.enable_gaussian_splatting,
                 # Use ray-based pose estimation for 44% better accuracy
                 use_ray_pose=settings.use_ray_pose,
                 # Reference view strategy for multi-view consistency
                 ref_view_strategy="saddle_balanced",
-                # Export settings - let DA3 handle the GLB generation natively
+                # Export settings - GLB point cloud
                 export_dir=str(job_dir),
                 export_format=settings.export_format,
                 # GLB quality parameters
@@ -284,13 +278,8 @@ class DepthService:
                     message="Processing DA3 native export..."
                 ))
 
-            # DA3 exports to subdirectories with specific naming:
-            # - gs_ply format: {export_dir}/gs_ply/0000.ply
-            # - gs_video format: {export_dir}/gs_video/0000_extend.mp4
-            # - glb format: {export_dir}/scene.glb or similar
+            # DA3 exports GLB to: {export_dir}/scene.glb
             job_dir = settings.temp_dir / job_id
-            export_ext = settings.export_format.split("-")[0]  # Handle "glb-feat_vis" -> "glb"
-
             exported_file = None
 
             # Log directory contents for debugging
@@ -304,43 +293,23 @@ class DepthService:
                     else:
                         logger.info(f"  [FILE] {item.name}")
 
-            # Priority 1: Check for gs_ply files in subdirectory (DA3's actual export location)
-            gs_ply_dir = job_dir / "gs_ply"
-            if gs_ply_dir.exists():
-                ply_files = sorted(gs_ply_dir.glob("*.ply"))
-                if ply_files:
-                    exported_file = ply_files[0]
-                    logger.info(f"Found gs_ply export: {exported_file}")
+            # Check for GLB files (point cloud export)
+            possible_files = [
+                job_dir / "scene.glb",
+                job_dir / "output.glb",
+            ]
+            for f in possible_files:
+                if f.exists():
+                    exported_file = f
+                    logger.info(f"Found export file: {exported_file}")
+                    break
 
-            # Priority 2: Check for GLB files (point cloud export)
+            # Fallback: Check for any GLB file in the directory
             if exported_file is None:
-                possible_files = [
-                    job_dir / "scene.glb",
-                    job_dir / f"scene.{export_ext}",
-                    job_dir / f"output.{export_ext}",
-                    job_dir / "scene.ply",
-                ]
-                for f in possible_files:
-                    if f.exists():
-                        exported_file = f
-                        logger.info(f"Found export file: {exported_file}")
-                        break
-
-            # Priority 3: Check for any GLB/PLY file in the directory or subdirectories
-            if exported_file is None:
-                for ext in ["ply", "glb", "gltf"]:
-                    # Check root directory
-                    matches = list(job_dir.glob(f"*.{ext}"))
-                    if matches:
-                        exported_file = matches[0]
-                        logger.info(f"Found {ext} file in root: {exported_file}")
-                        break
-                    # Check subdirectories
-                    matches = list(job_dir.glob(f"**/*.{ext}"))
-                    if matches:
-                        exported_file = matches[0]
-                        logger.info(f"Found {ext} file in subdir: {exported_file}")
-                        break
+                matches = list(job_dir.glob("*.glb"))
+                if matches:
+                    exported_file = matches[0]
+                    logger.info(f"Found GLB file: {exported_file}")
 
             if exported_file and exported_file.exists():
                 # Calculate relative path from job_dir for proper URL
