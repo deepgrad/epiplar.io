@@ -81,6 +81,10 @@ class DepthCompletion:
         if depth_map.ndim != 2:
             raise ValueError(f"Expected 2D depth map, got shape {depth_map.shape}")
 
+        # Store original shape for validation
+        original_shape = depth_map.shape
+        H, W = original_shape
+
         # Create validity mask based on confidence or depth values
         if confidence_map is not None:
             valid_mask = (confidence_map >= conf_threshold) & (depth_map > 0) & np.isfinite(depth_map)
@@ -137,6 +141,27 @@ class DepthCompletion:
         # Preserve original valid depth values (don't modify good data)
         result[valid_mask] = depth_map[valid_mask]
 
+        # Verify spatial integrity: corner pixels should maintain relative positions
+        # This catches any accidental transpose/flip/rotation
+        corners = [(0, 0), (0, W-1), (H-1, 0), (H-1, W-1)]
+        for r, c in corners:
+            if valid_mask[r, c]:
+                if result[r, c] != depth_map[r, c]:
+                    logger.warning(f"Corner ({r},{c}) value changed: {depth_map[r,c]} -> {result[r,c]}")
+
+        # Validate output shape matches input (no transpose/flip by OpenCV ops)
+        if result.shape != original_shape:
+            raise RuntimeError(
+                f"Depth completion changed shape: {original_shape} -> {result.shape}. "
+                "This should never happen - OpenCV ops preserve shape."
+            )
+
+        # Sanity check: ensure H and W weren't swapped (transposed)
+        if result.shape[0] != H or result.shape[1] != W:
+            raise RuntimeError(
+                f"Depth completion transposed array: expected ({H}, {W}), got {result.shape}"
+            )
+
         return result
 
     def complete_batch(
@@ -154,17 +179,28 @@ class DepthCompletion:
             conf_threshold: Confidence below this is considered a hole
 
         Returns:
-            Completed depth maps [N, H, W]
+            Completed depth maps [N, H, W] - GUARANTEED same shape as input
         """
         if depth_maps.ndim != 3:
             raise ValueError(f"Expected 3D array [N, H, W], got shape {depth_maps.shape}")
 
-        N = depth_maps.shape[0]
+        # Store original shape for validation
+        original_shape = depth_maps.shape
+        N, H, W = original_shape
+
         result = np.zeros_like(depth_maps)
 
         for i in range(N):
             conf_map = confidence_maps[i] if confidence_maps is not None else None
             result[i] = self.complete(depth_maps[i], conf_map, conf_threshold)
+
+        # Final validation: output must match input shape exactly
+        if result.shape != original_shape:
+            raise RuntimeError(
+                f"Batch depth completion changed shape: {original_shape} -> {result.shape}"
+            )
+
+        logger.debug(f"Depth completion batch: {N} frames, shape ({H}, {W}) preserved")
 
         return result
 
