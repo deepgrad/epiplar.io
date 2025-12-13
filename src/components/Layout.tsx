@@ -19,13 +19,13 @@ export default function Layout({ children }: LayoutProps) {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b border-border/40 glass sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between relative">
           <Link to="/" className="flex items-center gap-2 sm:gap-3 select-none">
             <img src={theme === 'dark' ? '/logo-white.svg' : '/logo-purple.svg'} alt="epipar.io" className="w-8 h-8 sm:w-9 sm:h-9 pointer-events-none" draggable="false" />
             <span className="text-base sm:text-lg font-semibold text-foreground tracking-tight">epipar.io</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-6 lg:gap-8 select-none">
+          <nav className="hidden md:flex items-center gap-6 lg:gap-8 select-none absolute left-1/2 -translate-x-1/2">
             <Link
               to="/"
               className={`text-sm font-medium transition-colors link-underline ${
