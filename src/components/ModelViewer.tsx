@@ -29,6 +29,54 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
   const [loadingLOD, setLoadingLOD] = useState<LODLevel | null>(null);
   const [loadedLODs, setLoadedLODs] = useState<Set<LODLevel>>(new Set());
 
+  // Create grid texture for background
+  const createGridTexture = useCallback(() => {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Fill with very dark indigo background
+    ctx.fillStyle = '#030208';
+    ctx.fillRect(0, 0, size, size);
+
+    // Set compositing to ensure no blending on overlap
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1.0;
+
+    // Draw grid lines with very dark indigo (same color, no transparency)
+    ctx.strokeStyle = '#080514';
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'square';
+
+    const gridSize = 8; // Number of grid cells (very sparse grid)
+    const cellSize = size / gridSize;
+
+    // Draw all grid lines with consistent color
+    ctx.beginPath();
+    // Vertical lines
+    for (let i = 0; i <= gridSize; i++) {
+      const x = Math.round(i * cellSize) + 0.5; // Add 0.5 for crisp lines
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, size);
+    }
+    // Horizontal lines
+    for (let i = 0; i <= gridSize; i++) {
+      const y = Math.round(i * cellSize) + 0.5; // Add 0.5 for crisp lines
+      ctx.moveTo(0, y);
+      ctx.lineTo(size, y);
+    }
+    ctx.stroke(); // Draw all lines in a single stroke to ensure consistent color
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    // Repeat will be set based on aspect ratio to maintain square cells
+    return texture;
+  }, []);
+
   // Initialize Draco loader once
   useEffect(() => {
     const loader = new GLTFLoader();
@@ -53,7 +101,19 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     const height = container.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x4a3f99); // Brand indigo background
+    const gridTexture = createGridTexture();
+    if (gridTexture) {
+      // Adjust texture repeat to maintain square grid cells based on aspect ratio
+      const aspect = width / height;
+      if (aspect > 1) {
+        // Wider than tall - more repeats horizontally
+        gridTexture.repeat.set(4 * aspect, 4);
+      } else {
+        // Taller than wide - more repeats vertically
+        gridTexture.repeat.set(4, 4 / aspect);
+      }
+    }
+    scene.background = gridTexture || new THREE.Color(0x030208); // Grid texture or fallback to very dark indigo
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.01, 10_000);
@@ -97,6 +157,16 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
       cameraRef.current.aspect = w / h;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
+      
+      // Update texture repeat to maintain square grid cells
+      if (gridTexture && sceneRef.current?.background === gridTexture) {
+        const aspect = w / h;
+        if (aspect > 1) {
+          gridTexture.repeat.set(4 * aspect, 4);
+        } else {
+          gridTexture.repeat.set(4, 4 / aspect);
+        }
+      }
     };
     window.addEventListener('resize', handleResize);
 

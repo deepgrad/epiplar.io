@@ -8,6 +8,54 @@ interface PointCloudViewerProps {
   className?: string;
 }
 
+// Create grid texture for background
+const createGridTexture = () => {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  // Fill with very dark indigo background
+  ctx.fillStyle = '#030208';
+  ctx.fillRect(0, 0, size, size);
+
+  // Set compositing to ensure no blending on overlap
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1.0;
+
+  // Draw grid lines with very dark indigo (same color, no transparency)
+  ctx.strokeStyle = '#080514';
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'square';
+
+  const gridSize = 8; // Number of grid cells (very sparse grid)
+  const cellSize = size / gridSize;
+
+  // Draw all grid lines with consistent color
+  ctx.beginPath();
+  // Vertical lines
+  for (let i = 0; i <= gridSize; i++) {
+    const x = Math.round(i * cellSize) + 0.5; // Add 0.5 for crisp lines
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, size);
+  }
+  // Horizontal lines
+  for (let i = 0; i <= gridSize; i++) {
+    const y = Math.round(i * cellSize) + 0.5; // Add 0.5 for crisp lines
+    ctx.moveTo(0, y);
+    ctx.lineTo(size, y);
+  }
+  ctx.stroke(); // Draw all lines in a single stroke to ensure consistent color
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  // Repeat will be set based on aspect ratio to maintain square cells
+  return texture;
+};
+
 export default function PointCloudViewer({ positions, colors, className = '' }: PointCloudViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -27,7 +75,19 @@ export default function PointCloudViewer({ positions, colors, className = '' }: 
 
     // Create scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a2e);
+    const gridTexture = createGridTexture();
+    if (gridTexture) {
+      // Adjust texture repeat to maintain square grid cells based on aspect ratio
+      const aspect = width / height;
+      if (aspect > 1) {
+        // Wider than tall - more repeats horizontally
+        gridTexture.repeat.set(4 * aspect, 4);
+      } else {
+        // Taller than wide - more repeats vertically
+        gridTexture.repeat.set(4, 4 / aspect);
+      }
+    }
+    scene.background = gridTexture || new THREE.Color(0x030208); // Grid texture or fallback to very dark indigo
     sceneRef.current = scene;
 
     // Create camera
@@ -55,11 +115,6 @@ export default function PointCloudViewer({ positions, colors, className = '' }: 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
-    // Add grid helper for reference
-    const gridHelper = new THREE.GridHelper(10, 20, 0x444444, 0x333333);
-    gridHelper.position.y = -2;
-    scene.add(gridHelper);
-
     // Animation loop
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -76,6 +131,16 @@ export default function PointCloudViewer({ positions, colors, className = '' }: 
       camera.aspect = newWidth / newHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(newWidth, newHeight);
+      
+      // Update texture repeat to maintain square grid cells
+      if (gridTexture && scene.background === gridTexture) {
+        const aspect = newWidth / newHeight;
+        if (aspect > 1) {
+          gridTexture.repeat.set(4 * aspect, 4);
+        } else {
+          gridTexture.repeat.set(4, 4 / aspect);
+        }
+      }
     };
 
     window.addEventListener('resize', handleResize);
