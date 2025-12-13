@@ -141,21 +141,21 @@ async def get_result(job_id: str) -> ProcessingResult:
 
     return ProcessingResult(**job["result"])
 
-@router.get("/assets/{job_id}/{filename}")
-async def get_job_asset(job_id: str, filename: str):
-    """Download or stream a generated job asset (e.g., room.glb)."""
+@router.get("/assets/{job_id}/{file_path:path}")
+async def get_job_asset(job_id: str, file_path: str):
+    """Download or stream a generated job asset (e.g., room.glb, gs_ply/0000.ply)."""
     if job_id not in jobs:
         raise HTTPException(404, "Job not found")
 
     job_dir = (settings.temp_dir / job_id).resolve()
-    asset_path = (job_dir / filename).resolve()
+    asset_path = (job_dir / file_path).resolve()
 
     # Prevent path traversal
-    if job_dir not in asset_path.parents and asset_path != job_dir:
+    if not str(asset_path).startswith(str(job_dir)):
         raise HTTPException(400, "Invalid asset path")
 
     if not asset_path.exists() or not asset_path.is_file():
-        raise HTTPException(404, "Asset not found")
+        raise HTTPException(404, f"Asset not found: {file_path}")
 
     # Best-effort media type
     suffix = asset_path.suffix.lower()
@@ -173,7 +173,7 @@ async def get_job_asset(job_id: str, filename: str):
     return FileResponse(
         str(asset_path),
         media_type=media_type,
-        filename=filename,
+        filename=asset_path.name,
     )
 
 @router.delete("/job/{job_id}")

@@ -21,7 +21,8 @@
       "Bash(npx tsc:*)",
       "Bash(C:/Users/panonit/.bun/bin/bun.exe run tsc --noEmit)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:ndhhs18dtvm3sb-8000.proxy.runpod.net)"
+      "WebFetch(domain:ndhhs18dtvm3sb-8000.proxy.runpod.net)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

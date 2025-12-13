@@ -284,37 +284,74 @@ class DepthService:
                     message="Processing DA3 native export..."
                 ))
 
-            # DA3 exports to {export_dir}/scene.glb (or scene.ply, etc.)
+            # DA3 exports to subdirectories with specific naming:
+            # - gs_ply format: {export_dir}/gs_ply/0000.ply
+            # - gs_video format: {export_dir}/gs_video/0000_extend.mp4
+            # - glb format: {export_dir}/scene.glb or similar
             job_dir = settings.temp_dir / job_id
             export_ext = settings.export_format.split("-")[0]  # Handle "glb-feat_vis" -> "glb"
 
-            # Check for exported files (DA3 may use different naming)
-            possible_files = [
-                job_dir / f"scene.{export_ext}",
-                job_dir / f"output.{export_ext}",
-                job_dir / f"room.{export_ext}",
-                job_dir / "scene.ply", # Explicitly check for PLY if that's the GS format
-                job_dir / "scene.gs",
-            ]
-
             exported_file = None
-            for f in possible_files:
-                if f.exists():
-                    exported_file = f
-                    break
 
-            # Also check for any GLB/PLY file in the directory
+            # Log directory contents for debugging
+            logger.info(f"Checking export directory: {job_dir}")
+            if job_dir.exists():
+                for item in job_dir.iterdir():
+                    if item.is_dir():
+                        logger.info(f"  [DIR] {item.name}/")
+                        for sub in item.iterdir():
+                            logger.info(f"    - {sub.name}")
+                    else:
+                        logger.info(f"  [FILE] {item.name}")
+
+            # Priority 1: Check for gs_ply files in subdirectory (DA3's actual export location)
+            gs_ply_dir = job_dir / "gs_ply"
+            if gs_ply_dir.exists():
+                ply_files = sorted(gs_ply_dir.glob("*.ply"))
+                if ply_files:
+                    exported_file = ply_files[0]
+                    logger.info(f"Found gs_ply export: {exported_file}")
+
+            # Priority 2: Check for GLB files (point cloud export)
             if exported_file is None:
-                for ext in ["glb", "ply", "gltf"]:
+                possible_files = [
+                    job_dir / "scene.glb",
+                    job_dir / f"scene.{export_ext}",
+                    job_dir / f"output.{export_ext}",
+                    job_dir / "scene.ply",
+                ]
+                for f in possible_files:
+                    if f.exists():
+                        exported_file = f
+                        logger.info(f"Found export file: {exported_file}")
+                        break
+
+            # Priority 3: Check for any GLB/PLY file in the directory or subdirectories
+            if exported_file is None:
+                for ext in ["ply", "glb", "gltf"]:
+                    # Check root directory
                     matches = list(job_dir.glob(f"*.{ext}"))
                     if matches:
                         exported_file = matches[0]
+                        logger.info(f"Found {ext} file in root: {exported_file}")
+                        break
+                    # Check subdirectories
+                    matches = list(job_dir.glob(f"**/*.{ext}"))
+                    if matches:
+                        exported_file = matches[0]
+                        logger.info(f"Found {ext} file in subdir: {exported_file}")
                         break
 
             if exported_file and exported_file.exists():
+                # Calculate relative path from job_dir for proper URL
+                try:
+                    rel_path = exported_file.relative_to(job_dir)
+                except ValueError:
+                    rel_path = exported_file.name
+
                 model_asset = ModelAsset(
                     filename=exported_file.name,
-                    url=f"/api/assets/{job_id}/{exported_file.name}",
+                    url=f"/api/assets/{job_id}/{rel_path}",
                     format=exported_file.suffix[1:],  # Remove the dot
                 )
                 logger.info(f"DA3 exported model: {exported_file}")
