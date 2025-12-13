@@ -214,11 +214,28 @@ async def get_disk_usage_info():
     }
 
 @router.get("/admin/jobs")
-async def list_jobs_on_disk():
-    """List all job directories on disk with their sizes."""
+async def list_jobs_on_disk(
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(50, ge=1, le=100, description="Number of jobs per page"),
+):
+    """List all job directories on disk with their sizes (paginated)."""
+    # Get job directories only once
+    all_jobs = get_job_directories()
+    total_count = len(all_jobs)
+
+    # Calculate pagination indices
+    start = (page - 1) * page_size
+    end = start + page_size
+
+    # Calculate total pages (ceiling division)
+    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
+
     return {
-        "jobs": get_job_directories(),
-        "count": len(get_job_directories()),
+        "jobs": all_jobs[start:end],
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
     }
 
 @router.post("/admin/cleanup")
