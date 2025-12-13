@@ -66,7 +66,6 @@ async def start_processing(
         job_id,
         Path(job["file_path"]),
         request.max_frames,
-        request.frame_interval,
     )
 
     return {"status": "processing", "job_id": job_id}
@@ -75,7 +74,6 @@ async def process_video_task(
     job_id: str,
     video_path: Path,
     max_frames: int,
-    frame_interval: int,
 ):
     """Background task to process video."""
     try:
@@ -92,7 +90,6 @@ async def process_video_task(
         frames = video_service.extract_frames_to_list(
             video_path,
             max_frames=max_frames,
-            frame_interval=frame_interval,
         )
 
         if not frames:

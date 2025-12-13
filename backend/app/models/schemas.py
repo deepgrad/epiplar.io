@@ -2,8 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class ProcessVideoRequest(BaseModel):
-    max_frames: int = 16
-    frame_interval: int = 30
+    max_frames: int = 128
 
 class ProgressUpdate(BaseModel):
     stage: str

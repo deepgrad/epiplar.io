@@ -7,8 +7,7 @@ class Settings(BaseSettings):
     model_name: str = "DA3NESTED-GIANT-LARGE"
 
     max_upload_size: int = 524288000  # 500MB
-    max_frames: int = 32  # More frames = better reconstruction
-    frame_interval: int = 15  # Extract more frequently for smoother coverage
+    max_frames: int = 128  # More frames = better reconstruction (adaptive interval)
 
     # Quality settings
     process_resolution: int = 756  # Higher = more detail (504, 756, 1008)
