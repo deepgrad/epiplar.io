@@ -7,13 +7,13 @@ class Settings(BaseSettings):
     model_name: str = "DA3NESTED-GIANT-LARGE"
 
     max_upload_size: int = 524288000  # 500MB
-    max_frames: int = 128  # More frames = better reconstruction (adaptive interval)
+    max_frames: int = 256  # Maximum frames for best reconstruction
 
-    # Quality settings
-    process_resolution: int = 1008  # Higher = more detail (504, 756, 1008)
+    # Quality settings - MAXIMUM QUALITY (compute not a concern)
+    process_resolution: int = 1008  # Highest supported (504, 756, 1008)
     use_ray_pose: bool = True  # Better camera pose accuracy (+44%)
-    num_max_points: int = 2_000_000  # Maximum points in output
-    conf_thresh_percentile: float = 10.0  # Lower = more points (less filtering)
+    num_max_points: int = 10_000_000  # 10M points for maximum density
+    conf_thresh_percentile: float = 3.0  # Keep 97% of points (almost no filtering)
 
     # Export settings - GLB point cloud only
     export_format: str = "glb"

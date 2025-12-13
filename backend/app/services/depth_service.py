@@ -97,9 +97,10 @@ class DepthService:
         else:
             median_depth, p95_depth = 1.0, 3.0
 
-        voxel_length = float(np.clip(median_depth / 200.0, 0.002, 0.05))
-        sdf_trunc = voxel_length * 5.0
-        depth_trunc = float(max(p95_depth * 1.5, median_depth * 3.0))
+        # Maximum quality TSDF parameters
+        voxel_length = float(np.clip(median_depth / 400.0, 0.001, 0.02))  # 2x finer voxels
+        sdf_trunc = voxel_length * 4.0
+        depth_trunc = float(max(p95_depth * 2.0, median_depth * 5.0))  # Maximum depth range
 
         volume = o3d.pipelines.integration.ScalableTSDFVolume(
             voxel_length=voxel_length,
@@ -139,8 +140,8 @@ class DepthService:
         mesh.remove_non_manifold_edges()
         mesh.compute_vertex_normals()
 
-        # Decimate to keep browser-friendly file sizes
-        target_tris = 200_000
+        # Higher triangle count for better quality (compute not a concern)
+        target_tris = 1_000_000
         if len(mesh.triangles) > target_tris:
             mesh = mesh.simplify_quadric_decimation(target_tris)
             mesh.remove_degenerate_triangles()
