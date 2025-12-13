@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(bun create:*)",
+      "Bash(powershell -c \"irm bun.sh/install.ps1 | iex\")",
+      "Bash(C:/Users/panonit/.bun/bin/bun.exe create:*)",
+      "Bash(C:/Users/panonit/.bun/bin/bun.exe install)",
+      "Bash(C:/Users/panonit/.bun/bin/bun.exe run dev)",
+      "WebSearch",
+      "Bash(bun add:*)",
+      "Bash(powershell -Command \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; where.exe bun; bun --version\")",
+      "Bash(powershell -Command \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; Get-ChildItem -Filter ''*.lock*''\")",
+      "Bash(powershell -Command:*)",
+      "Bash(powershell \"Test-Path ''C:\\Users\\panonit\\.bun\\bin\\bun.exe''\")",
+      "Bash(powershell \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; & ''C:\\Users\\panonit\\.bun\\bin\\bun.exe'' add @huggingface/transformers three\")",
+      "Bash(powershell \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; & ''C:\\Users\\panonit\\.bun\\bin\\bun.exe'' add -d @types/three\")",
+      "Bash(powershell \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; & ''C:\\Users\\panonit\\.bun\\bin\\bun.exe'' run tsc --noEmit 2>&1 | Select-Object -First 50\")",
+      "Bash(powershell \"cd ''C:\\Users\\panonit\\side-projects\\garaza''; & ''C:\\Users\\panonit\\.bun\\bin\\bun.exe'' run tsc --noEmit 2>&1 | Select-Object -First 30\")",
+      "Bash(powershell:*)",
+      "Bash(npx tsc:*)",
+      "Bash(C:/Users/panonit/.bun/bin/bun.exe run tsc --noEmit)"
+    ]
+  }
+}
