@@ -221,11 +221,34 @@ class DepthService:
                 message="Running DA3 inference..."
             ))
 
-        # Run inference
+        # Run inference with maximum quality settings
         try:
+            # Prepare export directory
+            job_dir = settings.temp_dir / job_id
+            job_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"Running DA3 inference with: model={settings.model_name}, "
+                       f"process_res={settings.process_resolution}, "
+                       f"use_ray_pose={settings.use_ray_pose}, "
+                       f"infer_gs={settings.enable_gaussian_splatting}")
+
+            # Use DA3's native export for best quality
             prediction = self._model.inference(
                 frames,
                 process_res=settings.process_resolution,
+                # Enable Gaussian Splatting for photorealistic output
+                infer_gs=settings.enable_gaussian_splatting,
+                # Use ray-based pose estimation for 44% better accuracy
+                use_ray_pose=settings.use_ray_pose,
+                # Reference view strategy for multi-view consistency
+                ref_view_strategy="saddle_balanced",
+                # Export settings - let DA3 handle the GLB generation natively
+                export_dir=str(job_dir),
+                export_format=settings.export_format,
+                # GLB quality parameters
+                conf_thresh_percentile=settings.conf_thresh_percentile,
+                num_max_points=settings.num_max_points,
+                show_cameras=settings.show_cameras,
             )
 
             if progress_callback:
@@ -243,42 +266,68 @@ class DepthService:
             extrinsics = getattr(prediction, 'extrinsics', None)  # [N, 3, 4]
             intrinsics = getattr(prediction, 'intrinsics', None)  # [N, 3, 3]
 
-            # Reconstruct a single unified 3D mesh model (best-effort; falls back to DA3 point cloud GLB export)
+            # DA3 native export creates the GLB file directly during inference
+            # Look for the exported file in the job directory
             model_asset: ModelAsset | None = None
-            try:
+
+            if progress_callback:
+                progress_callback(ProgressUpdate(
+                    stage="Exporting 3D model",
+                    progress=85.0,
+                    message="Processing DA3 native export..."
+                ))
+
+            # DA3 exports to {export_dir}/scene.glb (or scene.ply, etc.)
+            job_dir = settings.temp_dir / job_id
+            export_ext = settings.export_format.split("-")[0]  # Handle "glb-feat_vis" -> "glb"
+
+            # Check for exported files (DA3 may use different naming)
+            possible_files = [
+                job_dir / f"scene.{export_ext}",
+                job_dir / f"output.{export_ext}",
+                job_dir / f"room.{export_ext}",
+            ]
+
+            exported_file = None
+            for f in possible_files:
+                if f.exists():
+                    exported_file = f
+                    break
+
+            # Also check for any GLB/PLY file in the directory
+            if exported_file is None:
+                for ext in ["glb", "ply", "gltf"]:
+                    matches = list(job_dir.glob(f"*.{ext}"))
+                    if matches:
+                        exported_file = matches[0]
+                        break
+
+            if exported_file and exported_file.exists():
+                model_asset = ModelAsset(
+                    filename=exported_file.name,
+                    url=f"/api/assets/{job_id}/{exported_file.name}",
+                    format=exported_file.suffix[1:],  # Remove the dot
+                )
+                logger.info(f"DA3 exported model: {exported_file}")
                 if progress_callback:
                     progress_callback(ProgressUpdate(
-                        stage="Reconstructing 3D model",
-                        progress=85.0,
-                        message="Fusing frames into a single 3D mesh..."
-                    ))
-                model_asset = await self._export_room_mesh_asset(prediction, job_id)
-                if progress_callback:
-                    progress_callback(ProgressUpdate(
-                        stage="Reconstructing 3D model",
+                        stage="Exporting 3D model",
                         progress=92.0,
-                        message=f"3D mesh exported ({model_asset.format})"
+                        message=f"3D model exported ({model_asset.format})"
                     ))
-            except Exception as e:
-                logger.exception(f"Mesh reconstruction failed for job {job_id}: {e}")
-                # Fallback: DA3's native GLB export (fused point cloud, not a mesh)
+            else:
+                # Fallback: Try manual TSDF fusion if DA3 export didn't create a file
+                logger.warning(f"DA3 native export didn't create a file, trying TSDF fallback")
                 try:
-                    from depth_anything_3.utils.export import export as da3_export
-                    job_dir = settings.temp_dir / job_id
-                    da3_export(prediction, "glb", str(job_dir), glb={"show_cameras": False})
-                    model_asset = ModelAsset(
-                        filename="scene.glb",
-                        url=f"/api/assets/{job_id}/scene.glb",
-                        format="glb",
-                    )
+                    model_asset = await self._export_room_mesh_asset(prediction, job_id)
                     if progress_callback:
                         progress_callback(ProgressUpdate(
-                            stage="Reconstructing 3D model",
+                            stage="Exporting 3D model",
                             progress=92.0,
-                            message="Mesh failed; exported fused point cloud instead"
+                            message=f"3D mesh exported via TSDF ({model_asset.format})"
                         ))
-                except Exception as e2:
-                    logger.exception(f"Fallback GLB export also failed for job {job_id}: {e2}")
+                except Exception as e:
+                    logger.exception(f"Both DA3 export and TSDF fallback failed: {e}")
 
             # Convert to serializable format
             depth_frames = []
