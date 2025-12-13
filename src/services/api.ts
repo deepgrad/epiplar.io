@@ -3,7 +3,20 @@
  */
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+
+function normalizeWsBaseUrl(raw: string): string {
+  // Allow users to accidentally set http(s) here without breaking WebSocket construction.
+  if (raw.startsWith('https://')) return raw.replace(/^https:\/\//, 'wss://');
+  if (raw.startsWith('http://')) return raw.replace(/^http:\/\//, 'ws://');
+  return raw;
+}
+
+function defaultWsBaseUrl(): string {
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${window.location.host}`;
+}
+
+const WS_BASE_URL = normalizeWsBaseUrl(import.meta.env.VITE_WS_URL || defaultWsBaseUrl());
 
 export function apiUrl(pathOrUrl: string): string {
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
@@ -158,10 +171,11 @@ export function connectProgressWebSocket(
   onComplete: (result: ProcessingResult) => void,
   onError: (error: Error) => void
 ): WebSocket {
-  const ws = new WebSocket(`${WS_BASE_URL}/ws/${jobId}`);
+  const wsUrl = `${WS_BASE_URL}/ws/${jobId}`;
+  const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('WebSocket connected', wsUrl);
   };
 
   ws.onmessage = (event) => {

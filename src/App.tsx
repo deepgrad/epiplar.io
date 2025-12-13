@@ -13,6 +13,8 @@ import {
   startProcessing,
   connectProgressWebSocket,
   cancelJob,
+  getJobStatus,
+  getResult,
   ModelAsset,
 } from './services/api'
 
@@ -29,6 +31,7 @@ function App() {
   const [modelAsset, setModelAsset] = useState<ModelAsset | null>(null)
   const jobIdRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const pollTimerRef = useRef<number | null>(null)
 
   const handleVideoSelect = (file: File) => {
     setSelectedVideo(file)
@@ -50,6 +53,62 @@ function App() {
 
       // 2. Extract frames locally for color preview (parallel with backend processing)
       const framesPromise = extractVideoFrames(selectedVideo, 8, 30)
+
+      const stopPolling = () => {
+        if (pollTimerRef.current !== null) {
+          window.clearInterval(pollTimerRef.current)
+          pollTimerRef.current = null
+        }
+      }
+
+      const startPolling = () => {
+        if (pollTimerRef.current !== null) return
+
+        let inFlight = false
+        const pollOnce = async () => {
+          if (inFlight) return
+          inFlight = true
+          try {
+            const status = await getJobStatus(jobId)
+            if (status.progress) {
+              setProcessingProgress({
+                stage: status.progress.stage,
+                progress: status.progress.progress,
+                currentFrame: status.progress.current_frame,
+                totalFrames: status.progress.total_frames,
+                message: status.progress.message,
+              })
+            }
+
+            if (status.status === 'completed') {
+              stopPolling()
+              const result = await getResult(jobId)
+              const depthResults = convertBackendResult(result)
+              const frames = await framesPromise
+
+              setDepthResults(depthResults)
+              setOriginalFrames(frames)
+              setModelAsset(result.model_asset ?? null)
+              setProcessingProgress({ stage: 'Complete', progress: 100 })
+              setTimeout(() => setAppState('results'), 500)
+            } else if (status.status === 'failed') {
+              stopPolling()
+              setErrorMessage(status.error || 'Processing failed')
+              setAppState('error')
+            }
+          } catch (e) {
+            // Network issues: keep polling instead of hard-failing immediately.
+            console.warn('Status polling failed:', e)
+          } finally {
+            inFlight = false
+          }
+        }
+
+        // Immediate poll + interval
+        void pollOnce()
+        pollTimerRef.current = window.setInterval(pollOnce, 1000)
+        console.warn('WebSocket unavailable; using HTTP polling for progress.')
+      }
 
       // 3. Connect WebSocket for progress updates
       const ws = connectProgressWebSocket(
@@ -78,6 +137,19 @@ function App() {
           }, 500)
         },
         (error) => {
+          // Transport failures are common behind some proxies (RunPod, corporate networks, adblockers).
+          // Fall back to polling rather than failing the whole run.
+          if (error.message === 'WebSocket connection error') {
+            try {
+              wsRef.current?.close()
+            } catch {
+              // ignore
+            }
+            wsRef.current = null
+            startPolling()
+            return
+          }
+
           console.error('Processing error:', error)
           setErrorMessage(error.message)
           setAppState('error')
@@ -96,6 +168,11 @@ function App() {
   }
 
   const handleCancel = async () => {
+    // Stop polling
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
     // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close()
@@ -125,6 +202,10 @@ function App() {
     setErrorMessage(null)
     setModelAsset(null)
     jobIdRef.current = null
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null

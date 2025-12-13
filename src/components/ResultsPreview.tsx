@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DepthEstimationResult } from '../services/depthEstimation'
 import ModelViewer from './ModelViewer'
 import SplatViewer from './SplatViewer'
@@ -13,6 +13,7 @@ interface ResultsPreviewProps {
 }
 
 type ViewMode = 'model' | 'depth'
+type ModelRenderMode = 'glb' | 'ply'
 
 export default function ResultsPreview({
   onReset,
@@ -21,6 +22,29 @@ export default function ResultsPreview({
   modelAsset = null,
 }: ResultsPreviewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('model')
+  const [modelRenderMode, setModelRenderMode] = useState<ModelRenderMode>('glb')
+
+  const modelAssetFormat = (modelAsset?.format || '').toLowerCase()
+  const modelAssetUrl = modelAsset?.url || ''
+  const isPlyAsset = modelAssetFormat === 'ply'
+
+  // Parse job id from /api/assets/{jobId}/...
+  const jobIdFromAssetUrl = useMemo(() => {
+    const match = modelAssetUrl.match(/\/api\/assets\/([^/]+)\//)
+    return match?.[1] || null
+  }, [modelAssetUrl])
+
+  const glbCandidateUrl = useMemo(() => {
+    if (!jobIdFromAssetUrl) return null
+    return apiUrl(`/api/assets/${jobIdFromAssetUrl}/scene.glb`)
+  }, [jobIdFromAssetUrl])
+
+  // Default: if backend returned PLY, prefer showing GLB first (often sharper / more recognizable)
+  useEffect(() => {
+    if (isPlyAsset && glbCandidateUrl) setModelRenderMode('glb')
+    else setModelRenderMode('ply')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelAssetUrl])
 
   if (depthResults.length === 0) {
     return (
@@ -83,13 +107,47 @@ export default function ResultsPreview({
       {/* Main Visualization */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {viewMode === 'model' && (
-          <div className="aspect-video">
+          <div className="aspect-video relative">
             {modelAsset?.url ? (
-              (['gs', 'ply', 'splat'].includes(modelAsset.format || '')) ? (
-                <SplatViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
-              ) : (
-                <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
-              )
+              <>
+                {/* Toggle between GLB and PLY when backend returned a splat PLY */}
+                {isPlyAsset && glbCandidateUrl && (
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+                    <button
+                      onClick={() => setModelRenderMode('glb')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg backdrop-blur-sm border transition-colors ${
+                        modelRenderMode === 'glb'
+                          ? 'bg-white/90 text-slate-900 border-white/50'
+                          : 'bg-black/30 text-white border-white/10 hover:bg-black/40'
+                      }`}
+                      type="button"
+                    >
+                      Point Cloud (GLB)
+                    </button>
+                    <button
+                      onClick={() => setModelRenderMode('ply')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg backdrop-blur-sm border transition-colors ${
+                        modelRenderMode === 'ply'
+                          ? 'bg-white/90 text-slate-900 border-white/50'
+                          : 'bg-black/30 text-white border-white/10 hover:bg-black/40'
+                      }`}
+                      type="button"
+                    >
+                      Gaussian Splats (PLY)
+                    </button>
+                  </div>
+                )}
+
+                {isPlyAsset ? (
+                  modelRenderMode === 'glb' && glbCandidateUrl ? (
+                    <ModelViewer url={glbCandidateUrl} className="w-full h-full" />
+                  ) : (
+                    <SplatViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+                  )
+                ) : (
+                  <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+                )}
+              </>
             ) : (
               <div className="w-full h-full min-h-[300px] flex items-center justify-center text-slate-500">
                 No 3D model was generated for this run.
@@ -141,9 +199,17 @@ export default function ResultsPreview({
         </button>
         {modelAsset?.url && (
           <a
-            href={apiUrl(modelAsset.url)}
+            href={
+              isPlyAsset && modelRenderMode === 'glb' && glbCandidateUrl
+                ? glbCandidateUrl
+                : apiUrl(modelAsset.url)
+            }
             className="w-full sm:w-auto px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-xl transition-colors text-center"
-            download={modelAsset.filename || undefined}
+            download={
+              isPlyAsset && modelRenderMode === 'glb'
+                ? 'scene.glb'
+                : (modelAsset.filename || undefined)
+            }
           >
             Download 3D Model
           </a>
