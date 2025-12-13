@@ -6,6 +6,7 @@ import logging
 from .config import settings
 from .api.routes import router as api_router
 from .api.websocket import router as ws_router
+from .api.furniture_routes import router as fs_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
