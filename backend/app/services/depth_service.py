@@ -93,7 +93,7 @@ class DepthService:
             v_flat = v.flatten()[valid]
             z_valid = z[valid]
 
-            x = (u_flat - cx) * z_valid / fx
+            x = -((u_flat - cx) * z_valid / fx)  # Negate X
             y = -((v_flat - cy) * z_valid / fy)  # Negate Y: image coords (Y-down) → glTF (Y-up)
 
             # Transform to world coordinates
