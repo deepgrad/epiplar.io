@@ -27,12 +27,23 @@ class ModelAsset(BaseModel):
     filename: str
     url: str  # relative URL (frontend should prefix with API base URL)
     format: str  # e.g. "glb", "ply"
+    lod_level: Optional[str] = None  # "preview", "medium", "full", or None for legacy
+    point_count: Optional[int] = None  # Number of points in this LOD
+    file_size_bytes: Optional[int] = None  # File size for download estimation
+
+
+class LODAssetCollection(BaseModel):
+    """Collection of LOD assets for progressive loading."""
+    preview: Optional[ModelAsset] = None  # ~100K points, immediate load
+    medium: Optional[ModelAsset] = None   # ~1M points, background load
+    full: Optional[ModelAsset] = None     # ~10M points, on-demand load
 
 class ProcessingResult(BaseModel):
     job_id: str
     frames: list[DepthFrame]
     camera_params: Optional[CameraParameters] = None
-    model_asset: Optional[ModelAsset] = None
+    model_asset: Optional[ModelAsset] = None  # Keep for backwards compat (returns full quality)
+    lod_assets: Optional[LODAssetCollection] = None  # Multi-LOD assets for progressive loading
     original_width: int
     original_height: int
     model_used: str

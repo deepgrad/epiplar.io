@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from pathlib import Path
 import logging
 
-from ..models.schemas import ProgressUpdate, DepthFrame, CameraParameters, ModelAsset, ProcessingResult
+from ..models.schemas import ProgressUpdate, DepthFrame, CameraParameters, ModelAsset, ProcessingResult, LODAssetCollection
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,202 @@ class DepthService:
             H[:3, :4] = ext
             return H
         raise ValueError(f"extrinsic must be (4,4) or (3,4), got {ext.shape}")
+
+    def _build_point_cloud_from_prediction(self, prediction) -> 'o3d.geometry.PointCloud':
+        """Build Open3D point cloud from DA3 prediction."""
+        import open3d as o3d
+
+        depth = getattr(prediction, "depth", None)
+        colors = getattr(prediction, "processed_images", None)
+        intrinsics = getattr(prediction, "intrinsics", None)
+        extrinsics = getattr(prediction, "extrinsics", None)
+
+        if depth is None or intrinsics is None or extrinsics is None:
+            raise RuntimeError("DA3 prediction missing depth/intrinsics/extrinsics")
+        if colors is None:
+            raise RuntimeError("DA3 prediction missing processed_images")
+
+        all_points = []
+        all_colors = []
+        N, H, W = depth.shape
+
+        for i in range(N):
+            K = np.asarray(intrinsics[i], dtype=np.float64)
+            ext = self._as_homogeneous44(np.asarray(extrinsics[i], dtype=np.float64))
+            c2w = np.linalg.inv(ext)
+
+            # Create pixel grid
+            u, v = np.meshgrid(np.arange(W), np.arange(H))
+            z = np.asarray(depth[i], dtype=np.float32).flatten()
+            valid = (z > 0) & np.isfinite(z)
+
+            if not valid.any():
+                continue
+
+            # Unproject to 3D camera coordinates
+            fx, fy = K[0, 0], K[1, 1]
+            cx, cy = K[0, 2], K[1, 2]
+            u_flat = u.flatten()[valid]
+            v_flat = v.flatten()[valid]
+            z_valid = z[valid]
+
+            x = (u_flat - cx) * z_valid / fx
+            y = (v_flat - cy) * z_valid / fy
+
+            # Transform to world coordinates
+            pts_cam = np.stack([x, y, z_valid, np.ones_like(x)], axis=1)
+            pts_world = (c2w @ pts_cam.T).T[:, :3]
+
+            # Get colors
+            color_np = np.asarray(colors[i], dtype=np.uint8)
+            color_flat = color_np.reshape(-1, 3)[valid] / 255.0
+
+            all_points.append(pts_world)
+            all_colors.append(color_flat)
+
+        if not all_points:
+            raise RuntimeError("No valid points found in prediction")
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(np.vstack(all_points))
+        pcd.colors = o3d.utility.Vector3dVector(np.vstack(all_colors))
+        return pcd
+
+    def _export_pointcloud_to_glb(self, pcd: 'o3d.geometry.PointCloud', out_path: Path) -> None:
+        """Export Open3D point cloud to GLB via trimesh."""
+        import trimesh
+
+        vertices = np.asarray(pcd.points)
+        colors = (np.asarray(pcd.colors) * 255).astype(np.uint8)
+
+        # Add alpha channel (fully opaque)
+        colors_rgba = np.hstack([colors, np.full((len(colors), 1), 255, dtype=np.uint8)])
+
+        # Create point cloud as trimesh
+        cloud = trimesh.PointCloud(vertices=vertices, colors=colors_rgba)
+        cloud.export(str(out_path))
+        logger.info(f"Exported point cloud to {out_path}: {len(vertices):,} points")
+
+    def _compress_glb_with_draco(self, input_path: Path, output_path: Path) -> Path:
+        """Compress GLB using Draco via trimesh."""
+        try:
+            import trimesh
+
+            mesh = trimesh.load(str(input_path))
+            original_size = input_path.stat().st_size
+
+            # Export with Draco compression
+            mesh.export(
+                str(output_path),
+                file_type='glb',
+            )
+
+            compressed_size = output_path.stat().st_size
+            ratio = original_size / compressed_size if compressed_size > 0 else 1
+            logger.info(f"Compressed GLB: {original_size:,} -> {compressed_size:,} bytes ({ratio:.1f}x)")
+            return output_path
+
+        except Exception as e:
+            logger.warning(f"Draco compression failed, using uncompressed: {e}")
+            import shutil
+            shutil.copy(input_path, output_path)
+            return output_path
+
+    async def _export_multi_lod_glb(
+        self,
+        prediction,
+        job_id: str,
+        progress_callback: Optional[Callable[[ProgressUpdate], None]] = None,
+    ) -> LODAssetCollection:
+        """Export GLB at multiple LOD levels by downsampling single prediction."""
+        import open3d as o3d
+
+        job_dir = settings.temp_dir / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        lod_assets = LODAssetCollection()
+
+        # Build full point cloud from prediction (once)
+        if progress_callback:
+            progress_callback(ProgressUpdate(
+                stage="Generating LOD",
+                progress=82.0,
+                message="Building point cloud from depth maps..."
+            ))
+
+        full_pcd = await asyncio.to_thread(
+            self._build_point_cloud_from_prediction, prediction
+        )
+        full_points = len(full_pcd.points)
+        logger.info(f"Built full point cloud: {full_points:,} points")
+
+        for idx, lod_cfg in enumerate(settings.lod_configs):
+            lod_name = lod_cfg["name"]
+            target_points = lod_cfg["max_points"]
+
+            if progress_callback:
+                progress_callback(ProgressUpdate(
+                    stage="Generating LOD",
+                    progress=85 + (idx * 4),
+                    message=f"Exporting {lod_name} quality..."
+                ))
+
+            # Downsample if needed
+            if full_points > target_points:
+                bbox = full_pcd.get_axis_aligned_bounding_box()
+                volume = bbox.volume()
+                if volume > 0:
+                    voxel_size = (volume / target_points) ** (1/3)
+                    pcd = full_pcd.voxel_down_sample(voxel_size)
+                else:
+                    pcd = full_pcd
+            else:
+                pcd = full_pcd
+
+            actual_points = len(pcd.points)
+            logger.info(f"LOD {lod_name}: {actual_points:,} points (target: {target_points:,})")
+
+            # Export to GLB
+            lod_filename = f"scene_{lod_name}.glb"
+            lod_path = job_dir / lod_filename
+            await asyncio.to_thread(self._export_pointcloud_to_glb, pcd, lod_path)
+
+            # Apply Draco compression if enabled
+            final_path = lod_path
+            final_filename = lod_filename
+            if settings.enable_draco and lod_path.exists():
+                compressed_filename = f"scene_{lod_name}_draco.glb"
+                compressed_path = job_dir / compressed_filename
+                await asyncio.to_thread(
+                    self._compress_glb_with_draco, lod_path, compressed_path
+                )
+                # Remove uncompressed version to save space
+                if compressed_path.exists() and compressed_path != lod_path:
+                    lod_path.unlink()
+                    final_path = compressed_path
+                    final_filename = compressed_filename
+
+            # Create ModelAsset for this LOD
+            if final_path.exists():
+                asset = ModelAsset(
+                    filename=final_filename,
+                    url=f"/api/assets/{job_id}/{final_filename}",
+                    format="glb",
+                    lod_level=lod_name,
+                    point_count=actual_points,
+                    file_size_bytes=final_path.stat().st_size,
+                )
+
+                # Assign to appropriate LOD slot
+                if lod_name == "preview":
+                    lod_assets.preview = asset
+                elif lod_name == "medium":
+                    lod_assets.medium = asset
+                elif lod_name == "full":
+                    lod_assets.full = asset
+
+                logger.info(f"Created LOD asset: {lod_name} ({final_path.stat().st_size:,} bytes)")
+
+        return lod_assets
 
     def _export_tsdf_mesh_glb_sync(self, prediction, out_path: Path) -> None:
         """
@@ -268,84 +464,101 @@ class DepthService:
             extrinsics = getattr(prediction, 'extrinsics', None)  # [N, 3, 4]
             intrinsics = getattr(prediction, 'intrinsics', None)  # [N, 3, 3]
 
-            # DA3 native export creates the GLB file directly during inference
-            # Look for the exported file in the job directory
+            # Export 3D model - use LOD system if enabled
             model_asset: ModelAsset | None = None
+            lod_assets: LODAssetCollection | None = None
 
-            if progress_callback:
-                progress_callback(ProgressUpdate(
-                    stage="Exporting 3D model",
-                    progress=85.0,
-                    message="Processing DA3 native export..."
-                ))
-
-            # DA3 exports GLB to: {export_dir}/scene.glb
-            job_dir = settings.temp_dir / job_id
-            exported_file = None
-
-            # Log directory contents for debugging
-            logger.info(f"Checking export directory: {job_dir}")
-            if job_dir.exists():
-                for item in job_dir.iterdir():
-                    if item.is_dir():
-                        logger.info(f"  [DIR] {item.name}/")
-                        for sub in item.iterdir():
-                            logger.info(f"    - {sub.name}")
-                    else:
-                        logger.info(f"  [FILE] {item.name}")
-
-            # Check for GLB files (point cloud export)
-            possible_files = [
-                job_dir / "scene.glb",
-                job_dir / "output.glb",
-            ]
-            for f in possible_files:
-                if f.exists():
-                    exported_file = f
-                    logger.info(f"Found export file: {exported_file}")
-                    break
-
-            # Fallback: Check for any GLB file in the directory
-            if exported_file is None:
-                matches = list(job_dir.glob("*.glb"))
-                if matches:
-                    exported_file = matches[0]
-                    logger.info(f"Found GLB file: {exported_file}")
-
-            if exported_file and exported_file.exists():
-                # Calculate relative path from job_dir for proper URL
+            if settings.enable_lod:
+                # Generate multiple LOD levels for progressive loading
+                logger.info("LOD export enabled - generating preview/medium/full quality levels")
                 try:
-                    rel_path = exported_file.relative_to(job_dir)
-                    # Convert to forward slashes for URL (handles Windows paths)
-                    rel_path_str = str(rel_path).replace("\\", "/")
-                except ValueError:
-                    rel_path_str = exported_file.name
+                    lod_assets = await self._export_multi_lod_glb(
+                        prediction, job_id, progress_callback
+                    )
+                    # For backwards compatibility, set model_asset to full quality
+                    model_asset = lod_assets.full
+                    logger.info(f"LOD export complete: preview={lod_assets.preview is not None}, "
+                               f"medium={lod_assets.medium is not None}, full={lod_assets.full is not None}")
+                except Exception as e:
+                    logger.exception(f"LOD export failed, falling back to single export: {e}")
+                    lod_assets = None
 
-                model_asset = ModelAsset(
-                    filename=exported_file.name,
-                    url=f"/api/assets/{job_id}/{rel_path_str}",
-                    format=exported_file.suffix[1:],  # Remove the dot
-                )
-                logger.info(f"DA3 exported model: {exported_file}")
+            # Fallback to single GLB export if LOD is disabled or failed
+            if model_asset is None:
                 if progress_callback:
                     progress_callback(ProgressUpdate(
                         stage="Exporting 3D model",
-                        progress=92.0,
-                        message=f"3D model exported ({model_asset.format})"
+                        progress=85.0,
+                        message="Exporting single 3D model..."
                     ))
-            else:
-                # Fallback: Try manual TSDF fusion if DA3 export didn't create a file
-                logger.warning(f"DA3 native export didn't create a file, trying TSDF fallback")
-                try:
-                    model_asset = await self._export_room_mesh_asset(prediction, job_id)
+
+                # DA3 exports GLB to: {export_dir}/scene.glb
+                job_dir = settings.temp_dir / job_id
+                exported_file = None
+
+                # Log directory contents for debugging
+                logger.info(f"Checking export directory: {job_dir}")
+                if job_dir.exists():
+                    for item in job_dir.iterdir():
+                        if item.is_dir():
+                            logger.info(f"  [DIR] {item.name}/")
+                            for sub in item.iterdir():
+                                logger.info(f"    - {sub.name}")
+                        else:
+                            logger.info(f"  [FILE] {item.name}")
+
+                # Check for GLB files (point cloud export)
+                possible_files = [
+                    job_dir / "scene.glb",
+                    job_dir / "output.glb",
+                ]
+                for f in possible_files:
+                    if f.exists():
+                        exported_file = f
+                        logger.info(f"Found export file: {exported_file}")
+                        break
+
+                # Fallback: Check for any GLB file in the directory
+                if exported_file is None:
+                    matches = list(job_dir.glob("*.glb"))
+                    if matches:
+                        exported_file = matches[0]
+                        logger.info(f"Found GLB file: {exported_file}")
+
+                if exported_file and exported_file.exists():
+                    # Calculate relative path from job_dir for proper URL
+                    try:
+                        rel_path = exported_file.relative_to(job_dir)
+                        # Convert to forward slashes for URL (handles Windows paths)
+                        rel_path_str = str(rel_path).replace("\\", "/")
+                    except ValueError:
+                        rel_path_str = exported_file.name
+
+                    model_asset = ModelAsset(
+                        filename=exported_file.name,
+                        url=f"/api/assets/{job_id}/{rel_path_str}",
+                        format=exported_file.suffix[1:],  # Remove the dot
+                    )
+                    logger.info(f"DA3 exported model: {exported_file}")
                     if progress_callback:
                         progress_callback(ProgressUpdate(
                             stage="Exporting 3D model",
                             progress=92.0,
-                            message=f"3D mesh exported via TSDF ({model_asset.format})"
+                            message=f"3D model exported ({model_asset.format})"
                         ))
-                except Exception as e:
-                    logger.exception(f"Both DA3 export and TSDF fallback failed: {e}")
+                else:
+                    # Fallback: Try manual TSDF fusion if DA3 export didn't create a file
+                    logger.warning(f"DA3 native export didn't create a file, trying TSDF fallback")
+                    try:
+                        model_asset = await self._export_room_mesh_asset(prediction, job_id)
+                        if progress_callback:
+                            progress_callback(ProgressUpdate(
+                                stage="Exporting 3D model",
+                                progress=92.0,
+                                message=f"3D mesh exported via TSDF ({model_asset.format})"
+                            ))
+                    except Exception as e:
+                        logger.exception(f"Both DA3 export and TSDF fallback failed: {e}")
 
             # Convert to serializable format
             depth_frames = []
@@ -392,6 +605,7 @@ class DepthService:
                 frames=depth_frames,
                 camera_params=camera_params,
                 model_asset=model_asset,
+                lod_assets=lod_assets,
                 original_width=original_width,
                 original_height=original_height,
                 model_used=settings.model_name,

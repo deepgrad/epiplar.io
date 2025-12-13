@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { DepthEstimationResult } from '../services/depthEstimation'
 import ModelViewer from './ModelViewer'
 import DepthMapViewer from './DepthMapViewer'
-import { apiUrl, ModelAsset } from '../services/api'
+import { apiUrl, ModelAsset, LODAssetCollection } from '../services/api'
 
 interface ResultsPreviewProps {
   onReset: () => void
   depthResults: DepthEstimationResult[]
   originalFrames?: HTMLCanvasElement[]
   modelAsset?: ModelAsset | null
+  lodAssets?: LODAssetCollection | null  // NEW: LOD assets for progressive loading
 }
 
 type ViewMode = 'model' | 'depth'
@@ -18,8 +19,15 @@ export default function ResultsPreview({
   depthResults,
   originalFrames = [],
   modelAsset = null,
+  lodAssets = null,
 }: ResultsPreviewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('model')
+
+  // Determine the best asset for download (prefer full > medium > preview > legacy)
+  const downloadAsset = lodAssets?.full || lodAssets?.medium || lodAssets?.preview || modelAsset
+
+  // Check if we have any model to display
+  const hasModel = !!(lodAssets?.preview || lodAssets?.medium || lodAssets?.full || modelAsset?.url)
 
   if (depthResults.length === 0) {
     return (
@@ -83,8 +91,12 @@ export default function ResultsPreview({
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {viewMode === 'model' && (
           <div className="aspect-video relative">
-            {modelAsset?.url ? (
-              <ModelViewer url={apiUrl(modelAsset.url)} className="w-full h-full" />
+            {hasModel ? (
+              <ModelViewer
+                lodAssets={lodAssets}
+                url={!lodAssets && modelAsset?.url ? apiUrl(modelAsset.url) : undefined}
+                className="w-full h-full"
+              />
             ) : (
               <div className="w-full h-full min-h-[300px] flex items-center justify-center text-slate-500">
                 No 3D model was generated for this run.
@@ -132,13 +144,18 @@ export default function ResultsPreview({
         >
           Process Another Video
         </button>
-        {modelAsset?.url && (
+        {downloadAsset?.url && (
           <a
-            href={apiUrl(modelAsset.url)}
+            href={apiUrl(downloadAsset.url)}
             className="w-full sm:w-auto px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-xl transition-colors text-center"
-            download={modelAsset.filename || 'scene.glb'}
+            download={downloadAsset.filename || 'scene.glb'}
           >
             Download 3D Model
+            {downloadAsset.file_size_bytes && (
+              <span className="text-xs opacity-75 ml-1">
+                ({(downloadAsset.file_size_bytes / (1024 * 1024)).toFixed(1)} MB)
+              </span>
+            )}
           </a>
         )}
       </div>

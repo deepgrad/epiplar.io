@@ -49,13 +49,23 @@ export interface ModelAsset {
   filename: string;
   url: string; // relative URL from backend
   format: string; // "glb", "ply", ...
+  lod_level?: 'preview' | 'medium' | 'full' | null; // LOD level identifier
+  point_count?: number; // Number of points in this LOD
+  file_size_bytes?: number; // File size for download estimation
+}
+
+export interface LODAssetCollection {
+  preview?: ModelAsset | null; // ~100K points, immediate load
+  medium?: ModelAsset | null;  // ~1M points, background load
+  full?: ModelAsset | null;    // ~10M points, on-demand load
 }
 
 export interface ProcessingResult {
   job_id: string;
   frames: DepthFrame[];
   camera_params: CameraParameters | null;
-  model_asset?: ModelAsset | null;
+  model_asset?: ModelAsset | null; // Keep for backwards compat (returns full quality)
+  lod_assets?: LODAssetCollection | null; // Multi-LOD assets for progressive loading
   original_width: number;
   original_height: number;
   model_used: string;

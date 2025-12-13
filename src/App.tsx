@@ -16,6 +16,7 @@ import {
   getJobStatus,
   getResult,
   ModelAsset,
+  LODAssetCollection,
 } from './services/api'
 
 type AppState = 'upload' | 'processing' | 'results' | 'error'
@@ -29,6 +30,7 @@ function App() {
   const [originalFrames, setOriginalFrames] = useState<HTMLCanvasElement[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [modelAsset, setModelAsset] = useState<ModelAsset | null>(null)
+  const [lodAssets, setLodAssets] = useState<LODAssetCollection | null>(null)
   const jobIdRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const pollTimerRef = useRef<number | null>(null)
@@ -89,6 +91,7 @@ function App() {
               setDepthResults(depthResults)
               setOriginalFrames(frames)
               setModelAsset(result.model_asset ?? null)
+              setLodAssets(result.lod_assets ?? null)
               setProcessingProgress({ stage: 'Complete', progress: 100 })
               setTimeout(() => setAppState('results'), 500)
             } else if (status.status === 'failed') {
@@ -130,6 +133,7 @@ function App() {
           setDepthResults(depthResults)
           setOriginalFrames(frames)
           setModelAsset(result.model_asset ?? null)
+          setLodAssets(result.lod_assets ?? null)
           setProcessingProgress({ stage: 'Complete', progress: 100 })
 
           setTimeout(() => {
@@ -201,6 +205,7 @@ function App() {
     setProcessingProgress(null)
     setErrorMessage(null)
     setModelAsset(null)
+    setLodAssets(null)
     jobIdRef.current = null
     if (pollTimerRef.current !== null) {
       window.clearInterval(pollTimerRef.current)
@@ -381,6 +386,7 @@ function App() {
             depthResults={depthResults}
             originalFrames={originalFrames}
             modelAsset={modelAsset}
+            lodAssets={lodAssets}
           />
         )}
 
