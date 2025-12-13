@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
+import secrets
 
 class Settings(BaseSettings):
     # Use the best model: DA3NESTED-GIANT-LARGE-1.1 (1.4B params, requires ~16GB VRAM)
@@ -26,6 +27,11 @@ class Settings(BaseSettings):
 
     temp_dir: Path = Path("/tmp/garaza")
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+    # JWT Authentication settings
+    secret_key: str = secrets.token_urlsafe(32)
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     class Config:
         env_prefix = "GARAZA_"

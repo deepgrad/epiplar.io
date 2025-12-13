@@ -12,9 +12,9 @@ export default defineConfig({
   },
   server: {
     headers: {
-      // Required for SharedArrayBuffer which is used by ONNX runtime
+      // Use credentialless to allow external images while keeping SharedArrayBuffer support
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     proxy: {
       '/api': {
@@ -25,6 +25,13 @@ export default defineConfig({
         target: 'ws://localhost:8000',
         ws: true,
       },
+    },
+    watch: {
+      // Ignore backend directory to prevent WSL file watching issues
+      ignored: ['**/backend/**', '**/node_modules/**', '**/.git/**'],
+      // Use polling for better WSL compatibility
+      usePolling: true,
+      interval: 1000,
     },
   },
 })
