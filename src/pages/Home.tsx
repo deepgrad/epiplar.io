@@ -140,7 +140,7 @@ export default function Home() {
         {appState === 'upload' && (
           <div>
             {/* Hero Section */}
-            <div className="text-center mb-10 sm:mb-14">
+            <div className="text-center mb-10 sm:mb-14 select-none">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand/10 border border-brand/20 rounded-full text-xs font-medium text-brand-300 mb-6 opacity-0 animate-slide-down stagger-1">
                 <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-pulse" />
                 AI-Powered 3D Reconstruction
@@ -153,21 +153,15 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Upload & Search Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-6 opacity-0 animate-scale-in stagger-4">
-              {/* Video Upload - takes 3/5 of space */}
-              <div className="order-1 lg:col-span-3">
+            {/* Upload Section */}
+            <div className="max-w-3xl mx-auto mb-6 opacity-0 animate-scale-in stagger-4">
+              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6">
                 <VideoUpload onVideoSelect={handleVideoSelect} />
-              </div>
-
-              {/* Furniture Search - takes 2/5 of space */}
-              <div className="order-2 lg:col-span-2 rounded-xl border border-border/50 bg-muted/30 p-4 sm:p-5 min-h-[340px] lg:min-h-[400px] flex flex-col">
-                <FurnitureSearch onProductSelect={handleProductSelect} />
               </div>
             </div>
 
             {/* Process Button */}
-            <div className="text-center mt-8 sm:mt-10 opacity-0 animate-fade-in stagger-5">
+            <div className="text-center mb-8 opacity-0 animate-fade-in stagger-5">
               <button
                 onClick={handleProcess}
                 disabled={!selectedVideo}
@@ -179,9 +173,16 @@ export default function Home() {
               >
                 {selectedVideo ? 'Generate 3D Model' : 'Upload a video to begin'}
               </button>
-              <p className="text-xs text-muted-foreground mt-4">
+              <p className="text-xs text-muted-foreground mt-3">
                 Powered by Depth Anything V3
               </p>
+            </div>
+
+            {/* Furniture Search Section */}
+            <div className="max-w-3xl mx-auto opacity-0 animate-scale-in stagger-6">
+              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6">
+                <FurnitureSearch onProductSelect={handleProductSelect} />
+              </div>
             </div>
 
             {/* Features */}

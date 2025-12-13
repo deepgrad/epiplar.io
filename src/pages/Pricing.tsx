@@ -71,7 +71,7 @@ export default function Pricing() {
       <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 lg:py-20 w-full">
         <div>
           {/* Header */}
-          <div className="text-center mb-12 sm:mb-16">
+          <div className="text-center mb-12 sm:mb-16 select-none">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4 tracking-tight opacity-0 animate-slide-up stagger-1">
               Simple, transparent pricing
             </h1>
