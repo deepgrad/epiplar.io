@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import BaseModel
 from pathlib import Path
+import secrets
 from typing import Any
 
 
@@ -54,6 +55,11 @@ class Settings(BaseSettings):
     # Cleanup settings
     auto_cleanup_after_completion: bool = False  # Automatically delete job files after completion
     auto_cleanup_after_hours: float = 24.0  # Auto-delete jobs older than this (if auto_cleanup enabled)
+
+    # JWT Authentication settings
+    secret_key: str = secrets.token_urlsafe(32)
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     class Config:
         env_prefix = "GARAZA_"

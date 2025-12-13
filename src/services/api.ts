@@ -23,6 +23,111 @@ export function apiUrl(pathOrUrl: string): string {
   return `${API_BASE_URL}${pathOrUrl}`;
 }
 
+// Auth token management
+const TOKEN_KEY = 'epipar_token';
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function removeStoredToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+function getAuthHeaders(): HeadersInit {
+  const token = getStoredToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Auth types
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  is_active: boolean;
+  plan?: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterCredentials {
+  email: string;
+  username: string;
+  password: string;
+}
+
+// Auth API functions
+export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Login failed' }));
+    throw new Error(error.detail || 'Invalid email or password');
+  }
+
+  const data = await response.json();
+  setStoredToken(data.access_token);
+  return data;
+}
+
+export async function register(credentials: RegisterCredentials): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Registration failed' }));
+    throw new Error(error.detail || 'Registration failed');
+  }
+
+  const data = await response.json();
+  setStoredToken(data.access_token);
+  return data;
+}
+
+export async function getCurrentUser(): Promise<User | null> {
+  const token = getStoredToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      removeStoredToken();
+      return null;
+    }
+
+    return response.json();
+  } catch {
+    return null;
+  }
+}
+
+export function logout(): void {
+  removeStoredToken();
+}
+
 // Types matching backend schemas
 export interface ProgressUpdate {
   stage: string;
@@ -244,4 +349,283 @@ export async function checkHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Furniture Search Types
+export interface FurnitureProduct {
+  rank: number;
+  title: string;
+  brand: string;
+  price: string;
+  availability: string;
+  categories: string;
+  similarity_score: number;
+  asin: string;
+  url?: string;
+  imgUrl?: string;
+  images?: string[];
+  country?: string;
+  is_sponsored?: boolean;
+  sponsor_tier?: string;
+}
+
+export interface FilterOption {
+  name: string;
+  count: number;
+}
+
+export interface FurnitureFilters {
+  brands: FilterOption[];
+  countries: FilterOption[];
+}
+
+export interface FurnitureSearchResponse {
+  query: string;
+  results: FurnitureProduct[];
+  count: number;
+}
+
+export interface FurnitureSearchRequest {
+  query: string;
+  top_k?: number;
+}
+
+/**
+ * Search for furniture products using semantic similarity
+ */
+export async function searchFurniture(
+  query: string,
+  topK: number = 5,
+  userCountry?: string
+): Promise<FurnitureSearchResponse> {
+  const url = `${API_BASE_URL}/api/furniture/search`;
+  console.log('Furniture search URL:', url);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        user_country: userCountry,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+      throw new Error(error.detail || `Failed to search furniture: ${response.status}`);
+    }
+
+    return response.json();
+  } catch (err) {
+    if (err instanceof TypeError && err.message === 'Failed to fetch') {
+      throw new Error('Cannot connect to server. Please ensure the backend is running.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Get available filter options (brands and countries)
+ */
+export async function getFurnitureFilters(): Promise<FurnitureFilters> {
+  const response = await fetch(`${API_BASE_URL}/api/furniture/filters`);
+
+  if (!response.ok) {
+    throw new Error('Failed to get furniture filters');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get furniture product by ASIN
+ */
+export async function getFurnitureProduct(asin: string): Promise<FurnitureProduct> {
+  const response = await fetch(`${API_BASE_URL}/api/furniture/product/${asin}`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Product not found' }));
+    throw new Error(error.detail || 'Failed to get product');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get furniture search service stats
+ */
+export async function getFurnitureStats(): Promise<{
+  total_products: number;
+  unique_brands: number;
+  unique_categories: number;
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/furniture/stats`);
+
+  if (!response.ok) {
+    throw new Error('Failed to get furniture stats');
+  }
+
+  return response.json();
+}
+
+// Profile Types
+export interface ProfileStats {
+  scans_this_month: number;
+  total_scans: number;
+  storage_used: string;
+  plan: string;
+  plan_display: string;
+  scans_limit: number;
+  scans_reset_date: string | null;
+}
+
+export interface ActivityItem {
+  id: number;
+  action: string;
+  description: string | null;
+  icon: string;
+  time_ago: string;
+  created_at: string;
+}
+
+export interface ProfileResponse {
+  id: number;
+  email: string;
+  username: string;
+  is_active: boolean;
+  created_at: string;
+  plan: string;
+  plan_display: string;
+  stats: ProfileStats;
+  recent_activities: ActivityItem[];
+}
+
+/**
+ * Get current user's full profile with stats and recent activity
+ */
+export async function getProfile(): Promise<ProfileResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/profile`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to get profile' }));
+    throw new Error(error.detail || 'Failed to get profile');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get profile stats only
+ */
+export async function getProfileStats(): Promise<ProfileStats> {
+  const response = await fetch(`${API_BASE_URL}/api/profile/stats`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to get profile stats');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get user activities
+ */
+export async function getActivities(limit: number = 10): Promise<ActivityItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/profile/activities?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to get activities');
+  }
+
+  return response.json();
+}
+
+/**
+ * Update user's subscription plan
+ */
+export async function updatePlan(plan: string): Promise<ProfileStats> {
+  const response = await fetch(`${API_BASE_URL}/api/profile/plan`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ plan }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to update plan' }));
+    throw new Error(error.detail || 'Failed to update plan');
+  }
+
+  return response.json();
+}
+
+/**
+ * Log a user activity
+ */
+export async function logActivity(
+  action: string,
+  description?: string,
+  metadata?: Record<string, unknown>
+): Promise<{ success: boolean; activity_id: number }> {
+  const response = await fetch(`${API_BASE_URL}/api/profile/activity`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ action, description, metadata }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to log activity');
+  }
+
+  return response.json();
+}
+
+/**
+ * Increment scan count after a scan completes
+ */
+export async function incrementScan(
+  storageBytes: number = 0
+): Promise<{ success: boolean; scans_this_month: number; total_scans: number; storage_used: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/profile/increment-scan?storage_bytes=${storageBytes}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to increment scan' }));
+    throw new Error(error.detail || 'Failed to increment scan');
+  }
+
+  return response.json();
+}
+
+/**
+ * Log an export activity
+ */
+export async function logExport(format: string = 'ply'): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/api/profile/log-export?format=${format}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to log export');
+  }
+
+  return response.json();
 }

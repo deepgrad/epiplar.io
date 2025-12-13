@@ -24,6 +24,8 @@
       "WebFetch(domain:ndhhs18dtvm3sb-8000.proxy.runpod.net)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(git add:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
       "WebFetch(domain:arxiv.org)"
     ]
   }

@@ -29,12 +29,10 @@ export default function DepthMapViewer({
     const currentOriginal = originalFrames[currentIndex];
 
     if (showOriginal && currentOriginal) {
-      // Show original frame
       canvas.width = currentOriginal.width;
       canvas.height = currentOriginal.height;
       ctx.drawImage(currentOriginal, 0, 0);
     } else {
-      // Show depth map
       const depthCanvas = depthMapToCanvas(currentResult);
       canvas.width = depthCanvas.width;
       canvas.height = depthCanvas.height;
@@ -67,26 +65,24 @@ export default function DepthMapViewer({
   }
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200 overflow-hidden ${className}`}>
+    <div className={`bg-muted/30 overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-        <h3 className="font-semibold text-slate-800">Depth Analysis</h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowOriginal(!showOriginal)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              showOriginal
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {showOriginal ? 'Showing Original' : 'Showing Depth'}
-          </button>
-        </div>
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <h3 className="text-sm font-medium text-foreground">Depth Analysis</h3>
+        <button
+          onClick={() => setShowOriginal(!showOriginal)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            showOriginal
+              ? 'bg-foreground text-background'
+              : 'bg-accent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {showOriginal ? 'Original' : 'Depth'}
+        </button>
       </div>
 
       {/* Canvas */}
-      <div className="relative aspect-video bg-slate-900 flex items-center justify-center">
+      <div className="relative aspect-video bg-black flex items-center justify-center">
         <canvas
           ref={canvasRef}
           className="max-w-full max-h-full object-contain"
@@ -94,10 +90,10 @@ export default function DepthMapViewer({
 
         {/* Overlay gradient legend */}
         {!showOriginal && (
-          <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg p-3">
-            <div className="flex items-center gap-2 text-xs text-white mb-1">
+          <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm rounded-md px-3 py-2">
+            <div className="flex items-center gap-2 text-[10px] text-white/80">
               <span>Near</span>
-              <div className="w-24 h-3 rounded bg-gradient-to-r from-white to-black" />
+              <div className="w-16 h-2 rounded-sm bg-gradient-to-r from-white to-black" />
               <span>Far</span>
             </div>
           </div>
@@ -106,12 +102,12 @@ export default function DepthMapViewer({
 
       {/* Controls */}
       {depthResults.length > 1 && (
-        <div className="px-4 py-3 border-t border-slate-100">
+        <div className="px-4 py-3 border-t border-border">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={handlePrevious}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-accent hover:bg-accent/80 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -119,7 +115,7 @@ export default function DepthMapViewer({
               </button>
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary-100 hover:bg-primary-200 text-primary-600 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-foreground text-background hover:bg-primary-200 transition-colors"
               >
                 {isPlaying ? (
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -134,7 +130,7 @@ export default function DepthMapViewer({
               </button>
               <button
                 onClick={handleNext}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-accent hover:bg-accent/80 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -142,15 +138,15 @@ export default function DepthMapViewer({
               </button>
             </div>
 
-            <span className="text-sm text-slate-500">
-              Frame {currentIndex + 1} of {depthResults.length}
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {currentIndex + 1} / {depthResults.length}
             </span>
           </div>
 
           {/* Progress bar */}
-          <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="mt-3 h-1 bg-accent rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary-500 rounded-full transition-all duration-300"
+              className="h-full bg-foreground rounded-full transition-all duration-300"
               style={{ width: `${((currentIndex + 1) / depthResults.length) * 100}%` }}
             />
           </div>
