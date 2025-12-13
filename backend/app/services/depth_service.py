@@ -100,6 +100,12 @@ class DepthService:
             pts_cam = np.stack([x, y, z_valid, np.ones_like(x)], axis=1)
             pts_world = (c2w @ pts_cam.T).T[:, :3]
 
+            # Convert from OpenCV convention to glTF/OpenGL convention:
+            # OpenCV: Y-down, Z-forward (into scene)
+            # glTF:   Y-up, Z-backward (toward viewer)
+            pts_world[:, 1] = -pts_world[:, 1]  # Flip Y
+            pts_world[:, 2] = -pts_world[:, 2]  # Flip Z
+
             # Get colors
             color_np = np.asarray(colors[i], dtype=np.uint8)
             color_flat = color_np.reshape(-1, 3)[valid] / 255.0
