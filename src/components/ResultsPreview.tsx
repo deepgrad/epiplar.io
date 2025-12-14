@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { DepthEstimationResult } from '../services/depthEstimation'
 import ModelViewer, { ModelViewerRef, PlacedFurniture } from './ModelViewer'
 import FurniturePanel from './FurniturePanel'
-import { apiUrl, ModelAsset, LODAssetCollection, saveRoom } from '../services/api'
+import FurnitureSearch from './FurnitureSearch'
+import ProductDetailModal from './ProductDetailModal'
+import { apiUrl, ModelAsset, LODAssetCollection, saveRoom, FurnitureProduct } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 
 interface ResultsPreviewProps {
@@ -43,6 +45,15 @@ export default function ResultsPreview({
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedSuccessfully, setSavedSuccessfully] = useState(false)
+
+  // Furniture product modal state
+  const [selectedProduct, setSelectedProduct] = useState<FurnitureProduct | null>(null)
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false)
+
+  const handleProductSelect = useCallback((product: FurnitureProduct) => {
+    setSelectedProduct(product)
+    setIsProductModalOpen(true)
+  }, [])
 
   // Handle furniture changes from ModelViewer
   const handleFurnitureChange = useCallback((newFurniture: PlacedFurniture[]) => {
@@ -98,7 +109,7 @@ export default function ResultsPreview({
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto">
+    <div className="w-full max-w-7xl mx-auto">
       {/* Success Header */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 text-green-500 rounded-full text-xs font-medium mb-4 opacity-0 animate-slide-down stagger-1">
@@ -115,44 +126,56 @@ export default function ResultsPreview({
         </p>
       </div>
 
-      {/* Main Visualization */}
-      <div className="bg-muted/50 rounded-xl border border-border overflow-hidden opacity-0 animate-scale-in stagger-5">
-        <div className="aspect-video relative">
-          {hasModel ? (
-            <ModelViewer
-              ref={modelViewerRef}
-              lodAssets={lodAssets}
-              url={!lodAssets && modelAsset?.url ? apiUrl(modelAsset.url) : undefined}
-              className="w-full h-full"
-              editMode={editMode}
-              onFurnitureChange={handleFurnitureChange}
-              onSelectionChange={handleSelectionChange}
-            />
-          ) : (
-            <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
-              <div className="w-16 h-16 rounded-xl bg-accent flex items-center justify-center">
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
-              <p>No 3D model was generated</p>
+      {/* Main Content: 3D Viewer + Furniture Search */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 3D Viewer - Takes 2/3 of the space on large screens */}
+        <div className="lg:col-span-2">
+          <div className="bg-muted/50 rounded-xl border border-border overflow-hidden opacity-0 animate-scale-in stagger-5">
+            <div className="aspect-video relative">
+              {hasModel ? (
+                <ModelViewer
+                  ref={modelViewerRef}
+                  lodAssets={lodAssets}
+                  url={!lodAssets && modelAsset?.url ? apiUrl(modelAsset.url) : undefined}
+                  className="w-full h-full"
+                  editMode={editMode}
+                  onFurnitureChange={handleFurnitureChange}
+                  onSelectionChange={handleSelectionChange}
+                />
+              ) : (
+                <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
+                  <div className="w-16 h-16 rounded-xl bg-accent flex items-center justify-center">
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                  </div>
+                  <p>No 3D model was generated</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Furniture Panel - Below the 3D viewer */}
+          {hasModel && (
+            <div className="mt-6 opacity-0 animate-slide-up" style={{ animationDelay: '0.6s' }}>
+              <FurniturePanel
+                viewerRef={modelViewerRef}
+                editMode={editMode}
+                onEditModeChange={setEditMode}
+                selectedFurnitureId={selectedFurnitureId}
+                furniture={furniture}
+              />
             </div>
           )}
         </div>
-      </div>
 
-      {/* Furniture Panel */}
-      {hasModel && (
-        <div className="mt-6 opacity-0 animate-slide-up" style={{ animationDelay: '0.6s' }}>
-          <FurniturePanel
-            viewerRef={modelViewerRef}
-            editMode={editMode}
-            onEditModeChange={setEditMode}
-            selectedFurnitureId={selectedFurnitureId}
-            furniture={furniture}
-          />
+        {/* Furniture Search - Takes 1/3 of the space on large screens */}
+        <div className="lg:col-span-1 opacity-0 animate-slide-up" style={{ animationDelay: '0.5s' }}>
+          <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6 h-full">
+            <FurnitureSearch onProductSelect={handleProductSelect} />
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Success Message */}
       {savedSuccessfully && (
@@ -311,6 +334,13 @@ export default function ResultsPreview({
           </div>
         </div>
       )}
+
+      {/* Product Detail Modal */}
+      <ProductDetailModal
+        product={selectedProduct}
+        isOpen={isProductModalOpen}
+        onClose={() => setIsProductModalOpen(false)}
+      />
     </div>
   )
 }

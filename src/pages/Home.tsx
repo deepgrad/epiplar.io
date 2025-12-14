@@ -2,9 +2,6 @@ import { useState, useCallback, useRef } from 'react'
 import VideoUpload from '../components/VideoUpload'
 import ProcessingStatus from '../components/ProcessingStatus'
 import ResultsPreview from '../components/ResultsPreview'
-import FurnitureSearch from '../components/FurnitureSearch'
-import ProductDetailModal from '../components/ProductDetailModal'
-import { FurnitureProduct } from '../services/api'
 import {
   DepthEstimationResult,
   ProcessingProgress,
@@ -29,15 +26,8 @@ export default function Home() {
   const [originalFrames, setOriginalFrames] = useState<HTMLCanvasElement[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [modelAsset, setModelAsset] = useState<ModelAsset | null>(null)
-  const [selectedProduct, setSelectedProduct] = useState<FurnitureProduct | null>(null)
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false)
   const jobIdRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
-
-  const handleProductSelect = useCallback((product: FurnitureProduct) => {
-    setSelectedProduct(product)
-    setIsProductModalOpen(true)
-  }, [])
 
   const handleVideoSelect = (file: File) => {
     setSelectedVideo(file)
@@ -178,13 +168,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Furniture Search Section */}
-            <div className="max-w-3xl mx-auto opacity-0 animate-scale-in stagger-6">
-              <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6 border-hover-glow">
-                <FurnitureSearch onProductSelect={handleProductSelect} />
-              </div>
-            </div>
-
             {/* Features */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-16 sm:mt-20">
               {[
@@ -283,13 +266,6 @@ export default function Home() {
           </div>
         )}
       </main>
-
-      {/* Product Detail Modal */}
-      <ProductDetailModal
-        product={selectedProduct}
-        isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
-      />
     </>
   )
 }
