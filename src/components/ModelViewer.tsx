@@ -1044,9 +1044,9 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                       />
 
                       {/* Tooltip content */}
-                      <div className="relative bg-muted/95 backdrop-blur-sm rounded-xl shadow-xl border border-border overflow-hidden">
+                      <div className="relative bg-muted rounded-xl shadow-xl border border-border overflow-hidden">
                         {/* Header */}
-                        <div className="px-4 py-3 border-b border-border/50 bg-muted/50">
+                        <div className="px-4 py-3 border-b border-border bg-muted">
                           <div className="flex items-center justify-between">
                             <h4 className="text-foreground font-semibold capitalize text-sm">
                               {detection.class_name}
@@ -1078,7 +1078,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                         </div>
 
                         {/* Action Button */}
-                        <div className="p-3 bg-muted/30">
+                        <div className="p-3 bg-muted">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
