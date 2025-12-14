@@ -1,33 +1,70 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { LODAssetCollection, ModelAsset, apiUrl } from '../services/api';
+import { LODAssetCollection, apiUrl } from '../services/api';
 
 type LODLevel = 'preview' | 'medium' | 'full';
+
+// Furniture object that can be placed in the scene
+export interface PlacedFurniture {
+  id: string;
+  name: string;
+  url: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+}
+
+// Methods exposed via ref for external control
+export interface ModelViewerRef {
+  addFurniture: (url: string, name?: string) => Promise<string>;
+  removeFurniture: (id: string) => void;
+  selectFurniture: (id: string | null) => void;
+  setTransformMode: (mode: 'translate' | 'rotate' | 'scale') => void;
+  getFurnitureList: () => PlacedFurniture[];
+  exportScene: () => void;
+}
 
 interface ModelViewerProps {
   url?: string; // Legacy single URL support
   lodAssets?: LODAssetCollection | null; // NEW: LOD collection for progressive loading
   className?: string;
+  editMode?: boolean; // Enable furniture editing mode
+  onFurnitureChange?: (furniture: PlacedFurniture[]) => void;
+  onSelectionChange?: (selectedId: string | null) => void;
 }
 
-export default function ModelViewer({ url, lodAssets, className = '' }: ModelViewerProps) {
+const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelViewer(
+  { url, lodAssets, className = '', editMode = false, onFurnitureChange, onSelectionChange },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const transformControlsRef = useRef<TransformControls | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
   const animationFrameRef = useRef<number>(0);
   const loaderRef = useRef<GLTFLoader | null>(null);
   const cameraStateRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
 
+  // Furniture-related refs
+  const furnitureMapRef = useRef<Map<string, THREE.Object3D>>(new Map());
+  const furnitureDataRef = useRef<Map<string, PlacedFurniture>>(new Map());
+  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
+  const mouseRef = useRef<THREE.Vector2>(new THREE.Vector2());
+
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentLOD, setCurrentLOD] = useState<LODLevel | null>(null);
   const [loadingLOD, setLoadingLOD] = useState<LODLevel | null>(null);
   const [loadedLODs, setLoadedLODs] = useState<Set<LODLevel>>(new Set());
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
+  const [furnitureCount, setFurnitureCount] = useState(0); // Trigger re-renders
 
   // Create grid texture for background
   const createGridTexture = useCallback(() => {
@@ -76,6 +113,228 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     // Repeat will be set based on aspect ratio to maintain square cells
     return texture;
   }, []);
+
+  // Generate unique ID for furniture
+  const generateFurnitureId = useCallback(() => {
+    return `furniture_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }, []);
+
+  // Get current furniture list
+  const getFurnitureList = useCallback((): PlacedFurniture[] => {
+    return Array.from(furnitureDataRef.current.values());
+  }, []);
+
+  // Notify parent of furniture changes
+  const notifyFurnitureChange = useCallback(() => {
+    setFurnitureCount(furnitureDataRef.current.size);
+    onFurnitureChange?.(getFurnitureList());
+  }, [onFurnitureChange, getFurnitureList]);
+
+  // Update furniture data from Three.js object
+  const syncFurnitureData = useCallback((id: string) => {
+    const obj = furnitureMapRef.current.get(id);
+    const data = furnitureDataRef.current.get(id);
+    if (obj && data) {
+      data.position = [obj.position.x, obj.position.y, obj.position.z];
+      data.rotation = [obj.rotation.x, obj.rotation.y, obj.rotation.z];
+      data.scale = [obj.scale.x, obj.scale.y, obj.scale.z];
+      notifyFurnitureChange();
+    }
+  }, [notifyFurnitureChange]);
+
+  // Add furniture to scene
+  const addFurniture = useCallback(async (furnitureUrl: string, name?: string): Promise<string> => {
+    if (!sceneRef.current || !loaderRef.current) {
+      throw new Error('Scene not initialized');
+    }
+
+    const id = generateFurnitureId();
+    const displayName = name || `Object ${furnitureDataRef.current.size + 1}`;
+
+    return new Promise((resolve, reject) => {
+      loaderRef.current!.load(
+        furnitureUrl,
+        (gltf) => {
+          const root = gltf.scene;
+
+          // Calculate bounding box to normalize scale
+          const box = new THREE.Box3().setFromObject(root);
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+
+          // Normalize to reasonable size (about 1 unit)
+          const targetSize = 0.5;
+          const scaleFactor = maxDim > 0 ? targetSize / maxDim : 1;
+          root.scale.setScalar(scaleFactor);
+
+          // Center the model at its base
+          box.setFromObject(root);
+          const center = box.getCenter(new THREE.Vector3());
+          root.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
+
+          // Place in front of camera initially
+          if (cameraRef.current && controlsRef.current) {
+            const target = controlsRef.current.target.clone();
+            root.position.add(target);
+          }
+
+          // Store reference
+          root.userData.furnitureId = id;
+          root.userData.isFurniture = true;
+          furnitureMapRef.current.set(id, root);
+
+          // Store data
+          const furnitureData: PlacedFurniture = {
+            id,
+            name: displayName,
+            url: furnitureUrl,
+            position: [root.position.x, root.position.y, root.position.z],
+            rotation: [root.rotation.x, root.rotation.y, root.rotation.z],
+            scale: [root.scale.x, root.scale.y, root.scale.z],
+          };
+          furnitureDataRef.current.set(id, furnitureData);
+
+          sceneRef.current!.add(root);
+          notifyFurnitureChange();
+
+          // Auto-select the newly added furniture
+          setSelectedFurnitureId(id);
+          onSelectionChange?.(id);
+
+          resolve(id);
+        },
+        undefined,
+        (error) => {
+          console.error('Failed to load furniture:', error);
+          reject(new Error('Failed to load furniture model'));
+        }
+      );
+    });
+  }, [generateFurnitureId, notifyFurnitureChange, onSelectionChange]);
+
+  // Remove furniture from scene
+  const removeFurniture = useCallback((id: string) => {
+    const obj = furnitureMapRef.current.get(id);
+    if (obj && sceneRef.current) {
+      // Detach from transform controls if selected
+      if (selectedFurnitureId === id && transformControlsRef.current) {
+        transformControlsRef.current.detach();
+      }
+
+      // Remove from scene and dispose
+      sceneRef.current.remove(obj);
+      obj.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(material)) material.forEach((m) => m.dispose());
+        else material?.dispose();
+      });
+
+      furnitureMapRef.current.delete(id);
+      furnitureDataRef.current.delete(id);
+
+      if (selectedFurnitureId === id) {
+        setSelectedFurnitureId(null);
+        onSelectionChange?.(null);
+      }
+
+      notifyFurnitureChange();
+    }
+  }, [selectedFurnitureId, notifyFurnitureChange, onSelectionChange]);
+
+  // Select furniture for editing
+  const selectFurniture = useCallback((id: string | null) => {
+    setSelectedFurnitureId(id);
+    onSelectionChange?.(id);
+
+    if (transformControlsRef.current) {
+      if (id) {
+        const obj = furnitureMapRef.current.get(id);
+        if (obj) {
+          transformControlsRef.current.attach(obj);
+        }
+      } else {
+        transformControlsRef.current.detach();
+      }
+    }
+  }, [onSelectionChange]);
+
+  // Handle click to select furniture
+  const handleCanvasClick = useCallback((event: MouseEvent) => {
+    if (!editMode || !containerRef.current || !cameraRef.current || !sceneRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+
+    // Get all furniture objects
+    const furnitureObjects = Array.from(furnitureMapRef.current.values());
+    const intersects = raycasterRef.current.intersectObjects(furnitureObjects, true);
+
+    if (intersects.length > 0) {
+      // Find the root furniture object
+      let obj = intersects[0].object;
+      while (obj.parent && !obj.userData.isFurniture) {
+        obj = obj.parent;
+      }
+      if (obj.userData.furnitureId) {
+        selectFurniture(obj.userData.furnitureId);
+        return;
+      }
+    }
+
+    // Clicked on empty space - deselect
+    selectFurniture(null);
+  }, [editMode, selectFurniture]);
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!editMode) return;
+
+    switch (event.key.toLowerCase()) {
+      case 't':
+        setTransformMode('translate');
+        if (transformControlsRef.current) transformControlsRef.current.setMode('translate');
+        break;
+      case 'r':
+        setTransformMode('rotate');
+        if (transformControlsRef.current) transformControlsRef.current.setMode('rotate');
+        break;
+      case 's':
+        setTransformMode('scale');
+        if (transformControlsRef.current) transformControlsRef.current.setMode('scale');
+        break;
+      case 'delete':
+      case 'backspace':
+        if (selectedFurnitureId) {
+          event.preventDefault();
+          removeFurniture(selectedFurnitureId);
+        }
+        break;
+      case 'escape':
+        selectFurniture(null);
+        break;
+    }
+  }, [editMode, selectedFurnitureId, removeFurniture, selectFurniture]);
+
+  // Expose methods via ref
+  useImperativeHandle(ref, () => ({
+    addFurniture,
+    removeFurniture,
+    selectFurniture,
+    setTransformMode: (mode: 'translate' | 'rotate' | 'scale') => {
+      setTransformMode(mode);
+      if (transformControlsRef.current) transformControlsRef.current.setMode(mode);
+    },
+    getFurnitureList,
+    exportScene: () => {
+      // TODO: Implement GLB export with all furniture
+      console.log('Export scene - furniture:', getFurnitureList());
+    },
+  }), [addFurniture, removeFurniture, selectFurniture, getFurnitureList]);
 
   // Initialize Draco loader once
   useEffect(() => {
@@ -134,6 +393,27 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     controls.autoRotate = false;
     controlsRef.current = controls;
 
+    // TransformControls for furniture manipulation
+    const transformControls = new TransformControls(camera, renderer.domElement);
+    transformControls.setMode('translate');
+    transformControls.setSize(0.75);
+    // TransformControls extends Object3D, cast to add to scene
+    scene.add(transformControls as unknown as THREE.Object3D);
+    transformControlsRef.current = transformControls;
+
+    // Disable orbit controls while transforming
+    transformControls.addEventListener('dragging-changed', (event) => {
+      controls.enabled = !event.value;
+    });
+
+    // Sync furniture data when transform ends
+    transformControls.addEventListener('objectChange', () => {
+      const obj = transformControls.object;
+      if (obj?.userData.furnitureId) {
+        syncFurnitureData(obj.userData.furnitureId);
+      }
+    });
+
     // Lighting for meshes (point clouds ignore it)
     const ambient = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambient);
@@ -141,7 +421,10 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     dir.position.set(3, 5, 2);
     scene.add(dir);
 
-    // Grid removed - model should fill the screen
+    // Add hemisphere light for better furniture rendering
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
+    hemiLight.position.set(0, 10, 0);
+    scene.add(hemiLight);
 
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -157,7 +440,7 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
       cameraRef.current.aspect = w / h;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
-      
+
       // Update texture repeat to maintain square grid cells
       if (gridTexture && sceneRef.current?.background === gridTexture) {
         const aspect = w / h;
@@ -173,13 +456,14 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     return () => {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameRef.current);
+      transformControls.dispose();
       controls.dispose();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, []);
+  }, [syncFurnitureData]);
 
   // Save camera state before model swap
   const saveCameraState = useCallback(() => {
@@ -343,6 +627,39 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
     loadProgressively();
   }, [lodAssets, url, loadModel]);
 
+  // Set up click and keyboard event listeners for edit mode
+  useEffect(() => {
+    if (!editMode) return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Add click listener to the renderer canvas
+    const canvas = rendererRef.current?.domElement;
+    if (canvas) {
+      canvas.addEventListener('click', handleCanvasClick);
+    }
+
+    // Add keyboard listener
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      if (canvas) {
+        canvas.removeEventListener('click', handleCanvasClick);
+      }
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [editMode, handleCanvasClick, handleKeyDown]);
+
+  // Update transform controls visibility based on edit mode
+  useEffect(() => {
+    if (transformControlsRef.current) {
+      transformControlsRef.current.enabled = editMode;
+      // Cast to Object3D to access visible property
+      (transformControlsRef.current as unknown as THREE.Object3D).visible = editMode && selectedFurnitureId !== null;
+    }
+  }, [editMode, selectedFurnitureId]);
+
   // Format file size for display
   const formatSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -417,9 +734,58 @@ export default function ModelViewer({ url, lodAssets, className = '' }: ModelVie
         </div>
       )}
 
+      {/* Edit mode controls */}
+      {editMode && (
+        <div className="absolute bottom-4 left-4 flex flex-col gap-2">
+          {/* Transform mode buttons */}
+          <div className="bg-black/60 text-white text-xs px-2 py-1.5 rounded-lg backdrop-blur-sm flex items-center gap-1">
+            <span className="opacity-70 mr-1">Mode:</span>
+            {(['translate', 'rotate', 'scale'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setTransformMode(mode);
+                  if (transformControlsRef.current) transformControlsRef.current.setMode(mode);
+                }}
+                className={`px-2 py-1 rounded transition-colors ${
+                  transformMode === mode
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-white/20 hover:bg-white/30 text-white'
+                }`}
+                title={`${mode.charAt(0).toUpperCase() + mode.slice(1)} (${mode[0].toUpperCase()})`}
+              >
+                {mode === 'translate' ? 'Move' : mode === 'rotate' ? 'Rotate' : 'Scale'}
+              </button>
+            ))}
+          </div>
+
+          {/* Furniture count */}
+          {furnitureCount > 0 && (
+            <div className="bg-black/60 text-white text-xs px-3 py-2 rounded-lg backdrop-blur-sm">
+              <span className="opacity-70">Objects:</span> {furnitureCount}
+              {selectedFurnitureId && (
+                <span className="ml-2 text-sky-400">
+                  (1 selected)
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Help text - changes based on edit mode */}
       <div className="absolute top-4 right-4 text-white/70 text-xs bg-black/30 px-3 py-2 rounded-lg backdrop-blur-sm">
-        <p>Drag to rotate | Scroll to zoom | Shift+drag to pan</p>
+        {editMode ? (
+          <div className="space-y-0.5">
+            <p>Click object to select | T/R/S to switch mode</p>
+            <p>Delete to remove | Esc to deselect</p>
+          </div>
+        ) : (
+          <p>Drag to rotate | Scroll to zoom | Shift+drag to pan</p>
+        )}
       </div>
     </div>
   );
-}
+});
+
+export default ModelViewer;
