@@ -437,18 +437,17 @@ class DepthService:
             logger.info(f"Running DA3 inference with: model={settings.model_name}, "
                        f"process_res={settings.process_resolution}, "
                        f"use_ray_pose={settings.use_ray_pose}, "
-                       f"memory_optimization=inference_mode+autocast_fp16")
+                       f"memory_optimization=inference_mode")
 
             # Clear CUDA cache before inference to reduce fragmentation
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
 
-            # Use inference_mode + autocast for memory optimization
-            # - inference_mode: disables gradient tracking (not needed for inference)
-            # - autocast: uses float16 for compute where safe, weights stay float32
-            # Both are safe for quality - autocast only affects intermediate computations
-            with torch.inference_mode(), torch.cuda.amp.autocast(dtype=torch.float16):
+            # Use inference_mode for memory optimization
+            # Disables gradient tracking which is not needed for inference
+            # Note: autocast (float16) doesn't help with DA3 - model handles precision internally
+            with torch.inference_mode():
                 # Use DA3's native export for best quality (GLB point cloud only)
                 prediction = self._model.inference(
                     frames,
