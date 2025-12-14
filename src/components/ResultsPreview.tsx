@@ -1,5 +1,7 @@
+import { useState, useRef, useCallback } from 'react'
 import { DepthEstimationResult } from '../services/depthEstimation'
-import ModelViewer from './ModelViewer'
+import ModelViewer, { ModelViewerRef, PlacedFurniture } from './ModelViewer'
+import FurniturePanel from './FurniturePanel'
 import { apiUrl, ModelAsset, LODAssetCollection } from '../services/api'
 
 interface ResultsPreviewProps {
@@ -12,11 +14,29 @@ interface ResultsPreviewProps {
 
 export default function ResultsPreview({
   onReset,
-  depthResults,
-  originalFrames = [],
+  depthResults: _depthResults,
+  originalFrames: _originalFrames = [],
   modelAsset = null,
   lodAssets = null,
 }: ResultsPreviewProps) {
+  // Note: _depthResults and _originalFrames are kept for potential future use
+  void _depthResults;
+  void _originalFrames;
+  // Furniture editing state
+  const modelViewerRef = useRef<ModelViewerRef>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null)
+  const [furniture, setFurniture] = useState<PlacedFurniture[]>([])
+
+  // Handle furniture changes from ModelViewer
+  const handleFurnitureChange = useCallback((newFurniture: PlacedFurniture[]) => {
+    setFurniture(newFurniture)
+  }, [])
+
+  // Handle selection changes from ModelViewer
+  const handleSelectionChange = useCallback((id: string | null) => {
+    setSelectedFurnitureId(id)
+  }, [])
 
   // Determine the best asset for download (prefer full > medium > preview > legacy)
   const downloadAsset = lodAssets?.full || lodAssets?.medium || lodAssets?.preview || modelAsset
@@ -61,9 +81,13 @@ export default function ResultsPreview({
         <div className="aspect-video relative">
           {hasModel ? (
             <ModelViewer
+              ref={modelViewerRef}
               lodAssets={lodAssets}
               url={!lodAssets && modelAsset?.url ? apiUrl(modelAsset.url) : undefined}
               className="w-full h-full"
+              editMode={editMode}
+              onFurnitureChange={handleFurnitureChange}
+              onSelectionChange={handleSelectionChange}
             />
           ) : (
             <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
@@ -78,6 +102,18 @@ export default function ResultsPreview({
         </div>
       </div>
 
+      {/* Furniture Panel */}
+      {hasModel && (
+        <div className="mt-6 opacity-0 animate-slide-up" style={{ animationDelay: '0.6s' }}>
+          <FurniturePanel
+            viewerRef={modelViewerRef}
+            editMode={editMode}
+            onEditModeChange={setEditMode}
+            selectedFurnitureId={selectedFurnitureId}
+            furniture={furniture}
+          />
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8 opacity-0 animate-fade-in" style={{ animationDelay: '1s' }}>
