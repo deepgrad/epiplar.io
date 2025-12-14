@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Simple script to run the FastAPI server using uvicorn."""
+import os
 import sys
+
+# IMPORTANT: Set CUDA memory optimization BEFORE any torch import
+# This reduces memory fragmentation for large models like DA3
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 # Check if depth-anything-3 is installed
 try:
@@ -16,6 +21,21 @@ except ImportError:
     sys.exit(1)
 
 import uvicorn
+
+# Clear any leftover CUDA memory from previous runs
+try:
+    import torch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        # Log GPU memory status
+        total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        reserved = torch.cuda.memory_reserved(0) / (1024**3)
+        allocated = torch.cuda.memory_allocated(0) / (1024**3)
+        print(f"GPU Memory: {total:.1f}GB total, {reserved:.1f}GB reserved, {allocated:.1f}GB allocated")
+        print(f"CUDA allocator: {os.environ.get('PYTORCH_CUDA_ALLOC_CONF', 'default')}")
+except Exception as e:
+    print(f"CUDA init note: {e}")
 
 if __name__ == "__main__":
     uvicorn.run(

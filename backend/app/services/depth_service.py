@@ -436,29 +436,35 @@ class DepthService:
 
             logger.info(f"Running DA3 inference with: model={settings.model_name}, "
                        f"process_res={settings.process_resolution}, "
-                       f"use_ray_pose={settings.use_ray_pose}")
+                       f"use_ray_pose={settings.use_ray_pose}, "
+                       f"memory_optimization=inference_mode+autocast_fp16")
 
             # Clear CUDA cache before inference to reduce fragmentation
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
 
-            # Use DA3's native export for best quality (GLB point cloud only)
-            prediction = self._model.inference(
-                frames,
-                process_res=settings.process_resolution,
-                # Use ray-based pose estimation for 44% better accuracy
-                use_ray_pose=settings.use_ray_pose,
-                # Reference view strategy for multi-view consistency
-                ref_view_strategy="saddle_balanced",
-                # Export settings - GLB point cloud
-                export_dir=str(job_dir),
-                export_format=settings.export_format,
-                # GLB quality parameters
-                conf_thresh_percentile=settings.conf_thresh_percentile,
-                num_max_points=settings.num_max_points,
-                show_cameras=settings.show_cameras,
-            )
+            # Use inference_mode + autocast for memory optimization
+            # - inference_mode: disables gradient tracking (not needed for inference)
+            # - autocast: uses float16 for compute where safe, weights stay float32
+            # Both are safe for quality - autocast only affects intermediate computations
+            with torch.inference_mode(), torch.cuda.amp.autocast(dtype=torch.float16):
+                # Use DA3's native export for best quality (GLB point cloud only)
+                prediction = self._model.inference(
+                    frames,
+                    process_res=settings.process_resolution,
+                    # Use ray-based pose estimation for 44% better accuracy
+                    use_ray_pose=settings.use_ray_pose,
+                    # Reference view strategy for multi-view consistency
+                    ref_view_strategy="saddle_balanced",
+                    # Export settings - GLB point cloud
+                    export_dir=str(job_dir),
+                    export_format=settings.export_format,
+                    # GLB quality parameters
+                    conf_thresh_percentile=settings.conf_thresh_percentile,
+                    num_max_points=settings.num_max_points,
+                    show_cameras=settings.show_cameras,
+                )
 
             if progress_callback:
                 progress_callback(ProgressUpdate(
