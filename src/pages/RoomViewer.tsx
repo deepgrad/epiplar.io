@@ -15,6 +15,7 @@ export default function RoomViewer() {
   const [modelBlobUrl, setModelBlobUrl] = useState<string | null>(null)
   const [isModelLoading, setIsModelLoading] = useState(false)
   const [modelLoadProgress, setModelLoadProgress] = useState(0)
+  const [currentLodLevel, setCurrentLodLevel] = useState<string | null>(null)
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false)
@@ -83,11 +84,13 @@ export default function RoomViewer() {
                   const blob = new Blob(chunks)
                   const blobUrl = URL.createObjectURL(blob)
                   setModelBlobUrl(blobUrl)
+                  setCurrentLodLevel(asset.lod_level || 'unknown')
                 } else {
                   // Fallback if no content-length
                   const blob = await response.blob()
                   const blobUrl = URL.createObjectURL(blob)
                   setModelBlobUrl(blobUrl)
+                  setCurrentLodLevel(asset.lod_level || 'unknown')
                 }
               } else {
                 console.error('Failed to load model:', response.status)
@@ -180,6 +183,64 @@ export default function RoomViewer() {
       console.error('Download failed:', err)
     }
   }
+
+  const loadFullQuality = async () => {
+    if (!room?.assets?.length) return
+    const fullAsset = room.assets.find(a => a.lod_level === 'full')
+    if (!fullAsset?.url) return
+
+    // Revoke old blob URL
+    if (modelBlobUrl) {
+      URL.revokeObjectURL(modelBlobUrl)
+      setModelBlobUrl(null)
+    }
+
+    setIsModelLoading(true)
+    setModelLoadProgress(0)
+    const token = getStoredToken()
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${fullAsset.url}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+
+      if (response.ok) {
+        const contentLength = response.headers.get('content-length')
+        const total = contentLength ? parseInt(contentLength, 10) : 0
+
+        if (total > 0 && response.body) {
+          const reader = response.body.getReader()
+          const chunks: Uint8Array[] = []
+          let received = 0
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            chunks.push(value)
+            received += value.length
+            setModelLoadProgress(Math.round((received / total) * 100))
+          }
+
+          const blob = new Blob(chunks)
+          const blobUrl = URL.createObjectURL(blob)
+          setModelBlobUrl(blobUrl)
+          setCurrentLodLevel('full')
+        } else {
+          const blob = await response.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          setModelBlobUrl(blobUrl)
+          setCurrentLodLevel('full')
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load full quality:', err)
+    } finally {
+      setIsModelLoading(false)
+    }
+  }
+
+  const hasFullQuality = room?.assets?.some(a => a.lod_level === 'full')
+  const canUpgradeQuality = hasFullQuality && currentLodLevel !== 'full' && !isModelLoading
 
   if (!user) return null
 
@@ -308,7 +369,33 @@ export default function RoomViewer() {
       <div className="bg-muted/50 rounded-xl border border-border overflow-hidden mb-6">
         <div className="aspect-video relative">
           {modelBlobUrl ? (
-            <ModelViewer url={modelBlobUrl} className="w-full h-full" />
+            <>
+              <ModelViewer url={modelBlobUrl} className="w-full h-full" />
+              {/* Quality indicator and upgrade button */}
+              <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                {currentLodLevel && currentLodLevel !== 'full' && (
+                  <span className="px-2 py-1 bg-black/60 text-white text-xs rounded">
+                    {currentLodLevel === 'preview' ? 'Preview' : 'Medium'} Quality
+                  </span>
+                )}
+                {currentLodLevel === 'full' && (
+                  <span className="px-2 py-1 bg-green-500/80 text-white text-xs rounded">
+                    Full Quality
+                  </span>
+                )}
+                {canUpgradeQuality && (
+                  <button
+                    onClick={loadFullQuality}
+                    className="px-3 py-1.5 bg-brand hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Load Full Quality
+                  </button>
+                )}
+              </div>
+            </>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-4">
               {isModelLoading ? (
