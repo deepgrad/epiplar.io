@@ -9,6 +9,8 @@ services:
       - GARAZA_MODEL_NAME=da3-small
       - GARAZA_MAX_UPLOAD_SIZE=524288000
       - GARAZA_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+      # Reduce CUDA memory fragmentation (recommended by PyTorch for large models)
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     volumes:
       - ./app:/app/app:ro
       - ./uploads:/tmp/garaza

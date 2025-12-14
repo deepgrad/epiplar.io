@@ -438,6 +438,11 @@ class DepthService:
                        f"process_res={settings.process_resolution}, "
                        f"use_ray_pose={settings.use_ray_pose}")
 
+            # Clear CUDA cache before inference to reduce fragmentation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
             # Use DA3's native export for best quality (GLB point cloud only)
             prediction = self._model.inference(
                 frames,
@@ -464,11 +469,44 @@ class DepthService:
                     message="Inference complete"
                 ))
 
-            # Extract results
+            # Extract results and move to CPU immediately to free GPU memory
+            # Convert PyTorch tensors to numpy arrays if needed
             depth_maps = prediction.depth  # [N, H, W]
+            if torch.is_tensor(depth_maps):
+                depth_maps = depth_maps.cpu().numpy()
+                prediction.depth = depth_maps  # Update prediction object to use CPU data
+            
             conf_maps = getattr(prediction, 'conf', None)  # [N, H, W] if available
+            if conf_maps is not None and torch.is_tensor(conf_maps):
+                conf_maps = conf_maps.cpu().numpy()
+                prediction.conf = conf_maps  # Update prediction object to use CPU data
+            
             extrinsics = getattr(prediction, 'extrinsics', None)  # [N, 3, 4]
+            if extrinsics is not None:
+                if torch.is_tensor(extrinsics):
+                    extrinsics = extrinsics.cpu().numpy()
+                    prediction.extrinsics = extrinsics  # Update prediction object to use CPU data
+                elif hasattr(extrinsics, 'tolist'):
+                    extrinsics = np.asarray(extrinsics)
+                    prediction.extrinsics = extrinsics
+            
             intrinsics = getattr(prediction, 'intrinsics', None)  # [N, 3, 3]
+            if intrinsics is not None:
+                if torch.is_tensor(intrinsics):
+                    intrinsics = intrinsics.cpu().numpy()
+                    prediction.intrinsics = intrinsics  # Update prediction object to use CPU data
+                elif hasattr(intrinsics, 'tolist'):
+                    intrinsics = np.asarray(intrinsics)
+                    prediction.intrinsics = intrinsics
+            
+            # Move processed_images to CPU if they're tensors (used later for point cloud)
+            processed_images = getattr(prediction, 'processed_images', None)
+            if processed_images is not None and torch.is_tensor(processed_images):
+                prediction.processed_images = processed_images.cpu().numpy()
+            
+            # Clear CUDA cache after moving data to CPU
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             # Depth completion - fill holes in depth maps
             if settings.enable_depth_completion:
