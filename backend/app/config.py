@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Quality settings - MAXIMUM QUALITY (compute not a concern)
     process_resolution: int = 1008  # Highest supported (504, 756, 1008)
     use_ray_pose: bool = True  # Better camera pose accuracy (+44%)
-    num_max_points: int = 15_000_000  # 15M points - NO LIMIT (was 10M)
+    num_max_points: int = 10_000_000  # 10M points - NO LIMIT (was 10M)
     conf_thresh_percentile: float = 3.0  # Keep 97% of points (almost no filtering)
 
     # Export settings - GLB point cloud only
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     lod_configs: list[dict[str, Any]] = [
         {"name": "preview", "max_points": 100_000, "conf_thresh": 20.0},
         {"name": "medium", "max_points": 1_000_000, "conf_thresh": 10.0},
-        {"name": "full", "max_points": 15_000_000, "conf_thresh": 3.0},
+        {"name": "full", "max_points": 10_000_000, "conf_thresh": 3.0},
     ]
 
     # Draco Compression 
