@@ -23,23 +23,23 @@ class Settings(BaseSettings):
     # Quality settings - MAXIMUM QUALITY (compute not a concern)
     process_resolution: int = 1008  # Highest supported (504, 756, 1008)
     use_ray_pose: bool = True  # Better camera pose accuracy (+44%)
-    num_max_points: int = 10_000_000  # 10M points for maximum density
+    num_max_points: int = 15_000_000  # 15M points - NO LIMIT (was 10M)
     conf_thresh_percentile: float = 3.0  # Keep 97% of points (almost no filtering)
 
     # Export settings - GLB point cloud only
     export_format: str = "glb"
     show_cameras: bool = True  # Show camera positions in GLB
 
-    # LOD Configuration - progressive loading for large point clouds
-    enable_lod: bool = True  # Feature flag for LOD generation
+    # LOD Configuration - DISABLED for maximum quality
+    enable_lod: bool = False  # Disabled - use single full-quality export
     lod_configs: list[dict[str, Any]] = [
         {"name": "preview", "max_points": 100_000, "conf_thresh": 20.0},
         {"name": "medium", "max_points": 1_000_000, "conf_thresh": 10.0},
-        {"name": "full", "max_points": 10_000_000, "conf_thresh": 3.0},
+        {"name": "full", "max_points": 15_000_000, "conf_thresh": 3.0},
     ]
 
-    # Draco Compression - reduces GLB file size 5-10x
-    enable_draco: bool = True
+    # Draco Compression 
+    enable_draco: bool = True 
     draco_compression_level: int = 7  # 1-10, higher = smaller files but slower
 
     # Depth Completion - fills holes in depth maps using ip_basic algorithm
