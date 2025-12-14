@@ -47,6 +47,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const transformControlsRef = useRef<TransformControls | null>(null);
+  const transformHelperRef = useRef<THREE.Object3D | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
   const animationFrameRef = useRef<number>(0);
   const loaderRef = useRef<GLTFLoader | null>(null);
@@ -397,15 +398,12 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.setMode('translate');
     transformControls.setSize(0.75);
-    // TransformControls extends Object3D in Three.js
-    // Note: In some Three.js versions, TransformControls returns itself from getHelper()
-    // We need to add the controls directly - it IS an Object3D
-    if (transformControls instanceof THREE.Object3D) {
-      scene.add(transformControls);
-    } else {
-      console.warn('TransformControls is not an Object3D, skipping scene.add');
-    }
+    // Three.js r169+: TransformControls no longer extends Object3D
+    // Use getHelper() to get the visual gizmo that can be added to the scene
+    const helper = transformControls.getHelper();
+    scene.add(helper);
     transformControlsRef.current = transformControls;
+    transformHelperRef.current = helper;
 
     // Disable orbit controls while transforming
     transformControls.addEventListener('dragging-changed', (event) => {
@@ -757,10 +755,10 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   useEffect(() => {
     if (transformControlsRef.current) {
       transformControlsRef.current.enabled = editMode;
-      // TransformControls extends Object3D at runtime, but @types/three doesn't reflect this
-      // The visible property exists at runtime on the prototype chain
-      const tc = transformControlsRef.current as unknown as { visible: boolean };
-      tc.visible = editMode && selectedFurnitureId !== null;
+    }
+    // Control visibility via the helper (the actual Object3D in the scene)
+    if (transformHelperRef.current) {
+      transformHelperRef.current.visible = editMode && selectedFurnitureId !== null;
     }
   }, [editMode, selectedFurnitureId]);
 
