@@ -59,11 +59,12 @@ interface ProductDetailModalProps {
   product: FurnitureProduct | null
   isOpen: boolean
   onClose: () => void
+  onReplaceWithProduct?: (product: FurnitureProduct) => void
 }
 
 type PurchaseStep = 'details' | 'shipping' | 'payment' | 'confirmation'
 
-export default function ProductDetailModal({ product, isOpen, onClose }: ProductDetailModalProps) {
+export default function ProductDetailModal({ product, isOpen, onClose, onReplaceWithProduct }: ProductDetailModalProps) {
   const [step, setStep] = useState<PurchaseStep>('details')
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [shippingInfo, setShippingInfo] = useState({
@@ -225,6 +226,22 @@ export default function ProductDetailModal({ product, isOpen, onClose }: Product
                   >
                     Buy Now
                   </button>
+                  {onReplaceWithProduct && (
+                    <button
+                      onClick={() => {
+                        onReplaceWithProduct(product)
+                        onClose()
+                      }}
+                      className="px-6 py-3 bg-accent hover:bg-accent/80 text-foreground font-medium rounded-lg
+                                 transition-colors flex items-center gap-2"
+                      title="Replace furniture in room preview"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Replace with this</span>
+                    </button>
+                  )}
                   {product.url && (
                     <a
                       href={product.url}

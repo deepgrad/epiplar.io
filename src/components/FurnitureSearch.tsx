@@ -40,6 +40,7 @@ function ProductImage({ url, alt }: { url?: string; alt: string }) {
 interface FurnitureSearchProps {
   onProductSelect?: (product: FurnitureProduct) => void
   initialQuery?: string // Pre-fill search from detected furniture
+  onReplaceWithProduct?: (product: FurnitureProduct) => void
 }
 
 // Static filter options
@@ -47,7 +48,7 @@ const CATEGORIES = ['Chair', 'Table', 'Desk', 'Sofa', 'Bed', 'Lamp', 'Shelf', 'C
 const STYLES = ['Modern', 'Minimalist', 'Industrial', 'Rustic', 'Scandinavian', 'Mid-century']
 const MATERIALS = ['Wood', 'Metal', 'Fabric', 'Leather', 'Glass', 'Plastic']
 
-export default function FurnitureSearch({ onProductSelect, initialQuery }: FurnitureSearchProps) {
+export default function FurnitureSearch({ onProductSelect, initialQuery, onReplaceWithProduct }: FurnitureSearchProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FurnitureProduct[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -431,7 +432,7 @@ export default function FurnitureSearch({ onProductSelect, initialQuery }: Furni
               <div
                 key={product.asin}
                 onClick={() => onProductSelect?.(product)}
-                className={`group p-3 rounded-lg border transition-all duration-200 cursor-pointer animate-slide-up ${
+                className={`group relative p-3 rounded-lg border transition-all duration-200 cursor-pointer animate-slide-up ${
                   product.is_sponsored
                     ? 'bg-gradient-to-r from-amber-500/5 to-transparent border-amber-500/30 hover:border-amber-500/50'
                     : 'bg-muted/50 border-border/50 hover:border-brand/30 hover:bg-muted'
@@ -477,6 +478,23 @@ export default function FurnitureSearch({ onProductSelect, initialQuery }: Furni
                     </div>
                   </div>
                 </div>
+
+                {/* Replace button - appears on hover */}
+                {onReplaceWithProduct && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onReplaceWithProduct(product)
+                    }}
+                    className="absolute bottom-3 right-3 px-3 py-1.5 bg-brand hover:bg-brand-500 text-white text-xs font-medium rounded-md transition-all duration-200 opacity-0 group-hover:opacity-100 transform translate-y-1 group-hover:translate-y-0 flex items-center gap-1.5 shadow-lg"
+                    title="Replace furniture in room preview"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Replace
+                  </button>
+                )}
               </div>
             ))}
           </div>

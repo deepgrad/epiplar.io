@@ -64,6 +64,16 @@ class Settings(BaseSettings):
     auto_cleanup_after_completion: bool = False  # Automatically delete job files after completion
     auto_cleanup_after_hours: float = 24.0  # Auto-delete jobs older than this (if auto_cleanup enabled)
 
+    # Gemini API settings for Nano Banana Pro
+    gemini_api_key: str = ""
+    gemini_model_name: str = "gemini-3-pro-image-preview"
+    gemini_image_size: str = "2K"
+    gemini_aspect_ratio: str = "16:9"
+    gemini_request_timeout: int = 120
+    enable_image_generation_cache: bool = True
+    image_generation_cache_ttl_hours: float = 24.0
+    image_generation_cache_max_size: int = 100
+
     # JWT Authentication settings
     secret_key: str = secrets.token_urlsafe(32)
     algorithm: str = "HS256"

@@ -5,7 +5,8 @@ import ModelViewer, { ModelViewerRef, PlacedFurniture } from './ModelViewer'
 import FurniturePanel from './FurniturePanel'
 import FurnitureSearch from './FurnitureSearch'
 import ProductDetailModal from './ProductDetailModal'
-import { apiUrl, ModelAsset, LODAssetCollection, saveRoom, FurnitureProduct } from '../services/api'
+import ReplacementPreviewModal from './ReplacementPreviewModal'
+import { apiUrl, ModelAsset, LODAssetCollection, saveRoom, FurnitureProduct, replaceFurnitureInImage, fetchImageAsBase64, FurnitureReplacementResult } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 
 interface ResultsPreviewProps {
@@ -53,6 +54,13 @@ export default function ResultsPreview({
   // Furniture search from detection
   const [detectedFurnitureQuery, setDetectedFurnitureQuery] = useState<string | undefined>()
 
+  // Furniture replacement state
+  const [replacementModalOpen, setReplacementModalOpen] = useState(false)
+  const [replacementResult, setReplacementResult] = useState<FurnitureReplacementResult | null>(null)
+  const [replacementLoading, setReplacementLoading] = useState(false)
+  const [replacementError, setReplacementError] = useState<string | null>(null)
+  const [productForReplacement, setProductForReplacement] = useState<FurnitureProduct | null>(null)
+
   const handleProductSelect = useCallback((product: FurnitureProduct) => {
     setSelectedProduct(product)
     setIsProductModalOpen(true)
@@ -62,6 +70,60 @@ export default function ResultsPreview({
   const handleSearchFurniture = useCallback((furnitureType: string) => {
     // Set the query to trigger search in FurnitureSearch component
     setDetectedFurnitureQuery(furnitureType)
+  }, [])
+
+  // Handle furniture replacement with a product
+  const handleReplaceWithProduct = useCallback(async (product: FurnitureProduct) => {
+    // Store the product for display in the modal
+    setProductForReplacement(product)
+    setReplacementModalOpen(true)
+    setReplacementLoading(true)
+    setReplacementError(null)
+    setReplacementResult(null)
+
+    try {
+      // 1. Capture screenshot from the 3D viewer
+      const roomScreenshot = modelViewerRef.current?.captureScreenshot()
+      if (!roomScreenshot) {
+        throw new Error('Failed to capture room screenshot. Please ensure the 3D viewer is loaded.')
+      }
+
+      // 2. Fetch the product image as base64
+      const furnitureImageBase64 = await fetchImageAsBase64(product.imgUrl || '')
+      if (!furnitureImageBase64) {
+        throw new Error('Failed to load product image. Please try a different product.')
+      }
+
+      // 3. Call the API to replace furniture
+      const result = await replaceFurnitureInImage({
+        room_image_base64: roomScreenshot,
+        furniture_image_base64: furnitureImageBase64,
+        furniture_description: `${product.brand} ${product.title}`,
+        style_hints: product.categories || undefined,
+      })
+
+      setReplacementResult(result)
+    } catch (err) {
+      console.error('Furniture replacement failed:', err)
+      setReplacementError(err instanceof Error ? err.message : 'Failed to generate furniture replacement preview')
+    } finally {
+      setReplacementLoading(false)
+    }
+  }, [])
+
+  // Handle retry for replacement
+  const handleRetryReplacement = useCallback(() => {
+    if (productForReplacement) {
+      handleReplaceWithProduct(productForReplacement)
+    }
+  }, [productForReplacement, handleReplaceWithProduct])
+
+  // Handle close replacement modal
+  const handleCloseReplacementModal = useCallback(() => {
+    setReplacementModalOpen(false)
+    setReplacementResult(null)
+    setReplacementError(null)
+    setProductForReplacement(null)
   }, [])
 
   // Handle furniture changes from ModelViewer
@@ -183,7 +245,7 @@ export default function ResultsPreview({
         {/* Furniture Search - Takes 1/3 of the space on large screens */}
         <div className="lg:col-span-1 opacity-0 animate-slide-up" style={{ animationDelay: '0.5s' }}>
           <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6 h-full">
-            <FurnitureSearch onProductSelect={handleProductSelect} initialQuery={detectedFurnitureQuery} />
+            <FurnitureSearch onProductSelect={handleProductSelect} initialQuery={detectedFurnitureQuery} onReplaceWithProduct={handleReplaceWithProduct} />
           </div>
         </div>
       </div>
@@ -351,6 +413,18 @@ export default function ResultsPreview({
         product={selectedProduct}
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
+        onReplaceWithProduct={handleReplaceWithProduct}
+      />
+
+      {/* Furniture Replacement Preview Modal */}
+      <ReplacementPreviewModal
+        isOpen={replacementModalOpen}
+        onClose={handleCloseReplacementModal}
+        result={replacementResult}
+        isLoading={replacementLoading}
+        error={replacementError}
+        onRetry={handleRetryReplacement}
+        productName={productForReplacement?.title || ''}
       />
     </div>
   )

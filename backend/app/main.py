@@ -15,6 +15,7 @@ from .api.furniture_routes import router as furniture_router
 from .api.profile_routes import router as profile_router
 from .api.room_routes import router as room_router
 from .api.yolo_routes import router as yolo_router
+from .api.image_generation_routes import router as image_generation_router
 from .db.database import init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -101,6 +102,7 @@ app.include_router(furniture_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
 app.include_router(room_router, prefix="/api")
 app.include_router(yolo_router, prefix="/api")
+app.include_router(image_generation_router, prefix="/api")
 app.include_router(ws_router)
 
 @app.get("/health")

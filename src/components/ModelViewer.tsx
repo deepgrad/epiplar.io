@@ -26,6 +26,7 @@ export interface ModelViewerRef {
   setTransformMode: (mode: 'translate' | 'rotate' | 'scale') => void;
   getFurnitureList: () => PlacedFurniture[];
   exportScene: () => void;
+  captureScreenshot: () => string | null;
 }
 
 interface ModelViewerProps {
@@ -402,6 +403,13 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     exportScene: () => {
       // TODO: Implement GLB export with all furniture
       console.log('Export scene - furniture:', getFurnitureList());
+    },
+    captureScreenshot: () => {
+      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+        return null;
+      }
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      return rendererRef.current.domElement.toDataURL('image/png');
     },
   }), [addFurniture, removeFurniture, selectFurniture, getFurnitureList]);
 

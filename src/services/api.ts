@@ -873,3 +873,90 @@ export async function getYoloStatus(): Promise<{ model_loaded: boolean; device: 
 
   return response.json();
 }
+
+// ============================================================================
+// Furniture Replacement API - AI-Powered Furniture Replacement in Images
+// ============================================================================
+
+export interface FurnitureReplacementRequest {
+  room_image_base64: string;
+  furniture_image_base64: string;
+  furniture_description?: string;
+  target_location?: string;
+  style_hints?: string;
+}
+
+export interface FurnitureReplacementResult {
+  generated_image_base64: string;
+  prompt_used?: string;
+  generation_time_seconds?: number;
+}
+
+/**
+ * Replace furniture in a room image using AI image generation
+ */
+export async function replaceFurnitureInImage(
+  request: FurnitureReplacementRequest
+): Promise<FurnitureReplacementResult> {
+  const response = await fetch(`${API_BASE_URL}/api/furniture/replace`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Furniture replacement failed' }));
+    throw new Error(error.detail || 'Failed to replace furniture in image');
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch an image URL and convert it to base64
+ * Tries direct fetch first, falls back to proxy endpoint for CORS-restricted images
+ */
+export async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
+  if (!imageUrl || imageUrl === 'N/A') {
+    return null;
+  }
+
+  // Try direct fetch first
+  try {
+    const response = await fetch(imageUrl);
+    if (response.ok) {
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+  } catch {
+    // Direct fetch failed (likely CORS), try proxy
+  }
+
+  // Fall back to proxy endpoint
+  try {
+    const proxyResponse = await fetch(`${API_BASE_URL}/api/image/proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url: imageUrl }),
+    });
+
+    if (proxyResponse.ok) {
+      const data = await proxyResponse.json();
+      return data.image_base64 || null;
+    }
+  } catch (proxyError) {
+    console.error('Image proxy fetch failed:', proxyError);
+  }
+
+  return null;
+}

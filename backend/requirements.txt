@@ -36,5 +36,9 @@ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git
 # YOLOv8 for furniture detection
 ultralytics>=8.0.0
 
+# Google Gemini for AI image generation (Nano Banana Pro)
+google-genai>=0.3.0
+aiohttp>=3.9.0
+
 # Note: gsplat must be installed separately for Gaussian Splatting:
 # pip install --no-build-isolation git+https://github.com/nerfstudio-project/gsplat.git@v1.0.0

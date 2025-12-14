@@ -155,3 +155,33 @@ class DetectFurnitureResponse(BaseModel):
     detections: list[FurnitureDetection]
     image_width: int
     image_height: int
+
+
+# Nano Banana Pro - Furniture Replacement schemas
+class FurnitureReplacementRequest(BaseModel):
+    """Request body for AI furniture replacement using Gemini."""
+    room_image_base64: str  # Base64-encoded room image
+    furniture_image_base64: str  # Base64-encoded furniture image to place
+    furniture_description: str  # Description of the furniture piece
+    target_location: Optional[str] = None  # Where to place furniture (e.g., "center of room", "by the window")
+    style_hints: Optional[str] = None  # Style guidance (e.g., "modern minimalist", "cozy rustic")
+    aspect_ratio: Optional[str] = "16:9"  # Output aspect ratio
+
+
+class FurnitureReplacementResponse(BaseModel):
+    """Response containing the generated image with replaced furniture."""
+    generated_image_base64: str  # Base64-encoded generated image
+    prompt_used: str  # The prompt sent to the model
+    generation_time_seconds: float  # Time taken for generation
+    model_used: str  # Model identifier used
+    cache_hit: bool = False  # Whether result was from cache
+
+
+class ImageProxyRequest(BaseModel):
+    """Request body for proxying external images (CORS bypass)."""
+    url: str  # External image URL to fetch
+
+
+class ImageProxyResponse(BaseModel):
+    """Response containing fetched image as base64."""
+    image_base64: str  # Base64-encoded image data
