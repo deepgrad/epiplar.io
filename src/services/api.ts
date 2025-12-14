@@ -221,6 +221,7 @@ export async function startProcessing(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(), // Include auth so backend can track scan counts
     },
     body: JSON.stringify({
       max_frames: options.maxFrames ?? 128,
@@ -630,4 +631,159 @@ export async function logExport(format: string = 'ply'): Promise<{ success: bool
   }
 
   return response.json();
+}
+
+// ============================================================================
+// Room API - Saved Rooms Management
+// ============================================================================
+
+export interface RoomAsset {
+  filename: string;
+  url: string;
+  format: string;
+  lod_level?: 'preview' | 'medium' | 'full' | null;
+  file_size_bytes?: number;
+}
+
+export interface Room {
+  id: number;
+  user_id: number;
+  name: string;
+  description?: string | null;
+  job_id?: string | null;
+  frame_count?: number | null;
+  point_count?: number | null;
+  model_used?: string | null;
+  original_width?: number | null;
+  original_height?: number | null;
+  file_size_bytes: number;
+  file_size_display: string;
+  thumbnail_url?: string | null;
+  assets?: RoomAsset[] | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface RoomListResponse {
+  rooms: Room[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface RoomCreateRequest {
+  job_id: string;
+  name: string;
+  description?: string;
+}
+
+export interface RoomUpdateRequest {
+  name?: string;
+  description?: string;
+}
+
+/**
+ * Get list of user's saved rooms with pagination
+ */
+export async function getRooms(page: number = 1, pageSize: number = 20): Promise<RoomListResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/rooms?page=${page}&page_size=${pageSize}`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to get rooms' }));
+    throw new Error(error.detail || 'Failed to get rooms');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get a single room by ID
+ */
+export async function getRoom(roomId: number): Promise<Room> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/rooms/${roomId}`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Room not found' }));
+    throw new Error(error.detail || 'Room not found');
+  }
+
+  return response.json();
+}
+
+/**
+ * Save a completed job as a room
+ */
+export async function saveRoom(data: RoomCreateRequest): Promise<Room> {
+  const response = await fetch(`${API_BASE_URL}/api/rooms`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to save room' }));
+    throw new Error(error.detail || 'Failed to save room');
+  }
+
+  return response.json();
+}
+
+/**
+ * Update room metadata
+ */
+export async function updateRoom(roomId: number, data: RoomUpdateRequest): Promise<Room> {
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to update room' }));
+    throw new Error(error.detail || 'Failed to update room');
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a room
+ */
+export async function deleteRoom(roomId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to delete room' }));
+    throw new Error(error.detail || 'Failed to delete room');
+  }
+}
+
+/**
+ * Get room thumbnail URL
+ */
+export function getRoomThumbnailUrl(roomId: number): string {
+  return `${API_BASE_URL}/api/rooms/${roomId}/thumbnail`;
+}
+
+/**
+ * Get room asset URL
+ */
+export function getRoomAssetUrl(roomId: number, filename: string): string {
+  return `${API_BASE_URL}/api/rooms/${roomId}/assets/${filename}`;
 }

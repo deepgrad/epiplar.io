@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 class ProcessVideoRequest(BaseModel):
     max_frames: int = 128
@@ -53,3 +54,58 @@ class JobStatus(BaseModel):
     status: str  # "pending", "processing", "completed", "failed"
     progress: Optional[ProgressUpdate] = None
     error: Optional[str] = None
+
+
+# Room schemas for storing rendered rooms
+class RoomCreate(BaseModel):
+    """Request body for creating a room from a completed job."""
+    job_id: str
+    name: str
+    description: Optional[str] = None
+
+
+class RoomUpdate(BaseModel):
+    """Request body for updating room metadata."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class RoomAsset(BaseModel):
+    """Asset file information for a room."""
+    filename: str
+    url: str
+    format: str
+    lod_level: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+
+
+class RoomResponse(BaseModel):
+    """Response model for a stored room."""
+    id: int
+    user_id: int
+    name: str
+    description: Optional[str] = None
+    job_id: Optional[str] = None
+    frame_count: Optional[int] = None
+    point_count: Optional[int] = None
+    model_used: Optional[str] = None
+    original_width: Optional[int] = None
+    original_height: Optional[int] = None
+    file_size_bytes: float
+    file_size_display: str
+    thumbnail_url: Optional[str] = None
+    assets: Optional[list[RoomAsset]] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RoomListResponse(BaseModel):
+    """Response model for listing rooms with pagination."""
+    rooms: list[RoomResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

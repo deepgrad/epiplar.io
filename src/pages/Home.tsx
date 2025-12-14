@@ -246,6 +246,8 @@ export default function Home() {
             depthResults={depthResults}
             originalFrames={originalFrames}
             modelAsset={modelAsset}
+            lodAssets={null}
+            jobId={jobIdRef.current}
           />
         )}
 

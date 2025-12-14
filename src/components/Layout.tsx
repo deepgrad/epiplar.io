@@ -34,6 +34,16 @@ export default function Layout({ children }: LayoutProps) {
             >
               Home
             </Link>
+            {user && (
+              <Link
+                to="/my-rooms"
+                className={`text-sm font-medium transition-colors link-underline ${
+                  isActive('/my-rooms') ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                My Rooms
+              </Link>
+            )}
             <Link
               to="/pricing"
               className={`text-sm font-medium transition-colors link-underline ${
@@ -121,6 +131,17 @@ export default function Layout({ children }: LayoutProps) {
               >
                 Home
               </Link>
+              {user && (
+                <Link
+                  to="/my-rooms"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`text-sm font-medium transition-colors px-3 py-3 rounded-lg ${
+                    isActive('/my-rooms') ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  }`}
+                >
+                  My Rooms
+                </Link>
+              )}
               <Link
                 to="/pricing"
                 onClick={() => setMobileMenuOpen(false)}
