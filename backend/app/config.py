@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Export settings - GLB point cloud only
     export_format: str = "glb"
-    show_cameras: bool = True  # Show camera positions in GLB
+    show_cameras: bool = False  # Show camera positions in GLB
 
     # LOD Configuration - DISABLED for maximum quality
     enable_lod: bool = False  # Disabled - use single full-quality export
