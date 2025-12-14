@@ -138,7 +138,9 @@ export default function ReplacementPreviewModal({
               {/* Generated Image */}
               <div className="relative rounded-xl overflow-hidden bg-muted mb-4">
                 <img
-                  src={result.generated_image_base64}
+                  src={result.generated_image_base64.startsWith('data:')
+                    ? result.generated_image_base64
+                    : `data:image/png;base64,${result.generated_image_base64}`}
                   alt="AI-generated furniture replacement preview"
                   className="w-full h-auto object-contain"
                 />
@@ -150,14 +152,6 @@ export default function ReplacementPreviewModal({
                   </div>
                 )}
               </div>
-
-              {/* Prompt used (if available) */}
-              {result.prompt_used && (
-                <div className="p-4 bg-muted/50 rounded-lg mb-4">
-                  <p className="text-xs text-muted-foreground mb-1.5 font-medium">AI Prompt Used:</p>
-                  <p className="text-sm text-foreground/80 italic">"{result.prompt_used}"</p>
-                </div>
-              )}
 
               {/* Action Buttons */}
               <div className="flex gap-3">

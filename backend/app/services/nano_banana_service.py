@@ -360,7 +360,6 @@ Generate the composite image now."""
                 logger.info("Cache hit for furniture replacement request")
                 return {
                     "generated_image_base64": cached_entry.value,
-                    "prompt_used": cached_entry.prompt,
                     "generation_time_seconds": cached_entry.generation_time,
                     "model_used": self._model_name,
                     "cache_hit": True
@@ -432,7 +431,6 @@ Generate the composite image now."""
 
             return {
                 "generated_image_base64": generated_image_b64,
-                "prompt_used": prompt,
                 "generation_time_seconds": generation_time,
                 "model_used": self._model_name,
                 "cache_hit": False

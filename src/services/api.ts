@@ -888,8 +888,9 @@ export interface FurnitureReplacementRequest {
 
 export interface FurnitureReplacementResult {
   generated_image_base64: string;
-  prompt_used?: string;
   generation_time_seconds?: number;
+  model_used?: string;
+  cache_hit?: boolean;
 }
 
 /**

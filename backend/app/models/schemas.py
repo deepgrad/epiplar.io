@@ -171,7 +171,6 @@ class FurnitureReplacementRequest(BaseModel):
 class FurnitureReplacementResponse(BaseModel):
     """Response containing the generated image with replaced furniture."""
     generated_image_base64: str  # Base64-encoded generated image
-    prompt_used: str  # The prompt sent to the model
     generation_time_seconds: float  # Time taken for generation
     model_used: str  # Model identifier used
     cache_hit: bool = False  # Whether result was from cache
