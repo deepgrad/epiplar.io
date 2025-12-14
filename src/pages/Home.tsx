@@ -146,10 +146,10 @@ export default function Home() {
                 AI-Powered 3D Reconstruction
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 tracking-tight text-balance opacity-0 animate-slide-up stagger-2">
-                Turn your room into 3D
+                Redesign your space with AI
               </h1>
               <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed opacity-0 animate-slide-up stagger-3">
-                Upload a video of your room and our AI will create a precise 3D reconstruction in seconds.
+                Upload a video of your room, get AI furniture suggestions, and customize your 3D space in real-time.
               </p>
             </div>
 

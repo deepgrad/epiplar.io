@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DepthEstimationResult } from '../services/depthEstimation'
-import ModelViewer from './ModelViewer'
+import ModelViewer, { ModelViewerRef, PlacedFurniture } from './ModelViewer'
+import FurniturePanel from './FurniturePanel'
 import { apiUrl, ModelAsset, LODAssetCollection, saveRoom } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -16,14 +17,24 @@ interface ResultsPreviewProps {
 
 export default function ResultsPreview({
   onReset,
-  depthResults,
-  originalFrames = [],
+  depthResults: _depthResults,
+  originalFrames: _originalFrames = [],
   modelAsset = null,
   lodAssets = null,
   jobId = null,
 }: ResultsPreviewProps) {
+  // Note: _depthResults and _originalFrames are kept for potential future use
+  void _depthResults;
+  void _originalFrames;
+
   const { user } = useAuth()
   const navigate = useNavigate()
+
+  // Furniture editing state
+  const modelViewerRef = useRef<ModelViewerRef>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null)
+  const [furniture, setFurniture] = useState<PlacedFurniture[]>([])
 
   // Save room state
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -32,6 +43,16 @@ export default function ResultsPreview({
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedSuccessfully, setSavedSuccessfully] = useState(false)
+
+  // Handle furniture changes from ModelViewer
+  const handleFurnitureChange = useCallback((newFurniture: PlacedFurniture[]) => {
+    setFurniture(newFurniture)
+  }, [])
+
+  // Handle selection changes from ModelViewer
+  const handleSelectionChange = useCallback((id: string | null) => {
+    setSelectedFurnitureId(id)
+  }, [])
 
   // Determine the best asset for download (prefer full > medium > preview > legacy)
   const downloadAsset = lodAssets?.full || lodAssets?.medium || lodAssets?.preview || modelAsset
@@ -99,9 +120,13 @@ export default function ResultsPreview({
         <div className="aspect-video relative">
           {hasModel ? (
             <ModelViewer
+              ref={modelViewerRef}
               lodAssets={lodAssets}
               url={!lodAssets && modelAsset?.url ? apiUrl(modelAsset.url) : undefined}
               className="w-full h-full"
+              editMode={editMode}
+              onFurnitureChange={handleFurnitureChange}
+              onSelectionChange={handleSelectionChange}
             />
           ) : (
             <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
@@ -116,6 +141,18 @@ export default function ResultsPreview({
         </div>
       </div>
 
+      {/* Furniture Panel */}
+      {hasModel && (
+        <div className="mt-6 opacity-0 animate-slide-up" style={{ animationDelay: '0.6s' }}>
+          <FurniturePanel
+            viewerRef={modelViewerRef}
+            editMode={editMode}
+            onEditModeChange={setEditMode}
+            selectedFurnitureId={selectedFurnitureId}
+            furniture={furniture}
+          />
+        </div>
+      )}
 
       {/* Success Message */}
       {savedSuccessfully && (
