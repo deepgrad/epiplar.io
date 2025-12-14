@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { getRoom, deleteRoom, updateRoom, Room, API_BASE_URL } from '../services/api'
+import { getRoom, deleteRoom, updateRoom, Room, API_BASE_URL, getStoredToken } from '../services/api'
 import ModelViewer from '../components/ModelViewer'
 
 export default function RoomViewer() {
@@ -12,6 +12,7 @@ export default function RoomViewer() {
   const [room, setRoom] = useState<Room | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [modelBlobUrl, setModelBlobUrl] = useState<string | null>(null)
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false)
@@ -40,6 +41,26 @@ export default function RoomViewer() {
         setRoom(roomData)
         setEditName(roomData.name)
         setEditDescription(roomData.description || '')
+
+        // Fetch the GLB with auth and create a blob URL
+        if (roomData.assets?.length) {
+          const fullAsset = roomData.assets.find(a => a.lod_level === 'full')
+          const mediumAsset = roomData.assets.find(a => a.lod_level === 'medium')
+          const previewAsset = roomData.assets.find(a => a.lod_level === 'preview')
+          const asset = fullAsset || mediumAsset || previewAsset || roomData.assets[0]
+
+          if (asset?.url) {
+            const token = getStoredToken()
+            const response = await fetch(`${API_BASE_URL}${asset.url}`, {
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            })
+            if (response.ok) {
+              const blob = await response.blob()
+              const blobUrl = URL.createObjectURL(blob)
+              setModelBlobUrl(blobUrl)
+            }
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load room')
       } finally {
@@ -48,6 +69,13 @@ export default function RoomViewer() {
     }
 
     fetchRoom()
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (modelBlobUrl) {
+        URL.revokeObjectURL(modelBlobUrl)
+      }
+    }
   }, [user, roomId, navigate])
 
   const handleSaveEdit = async () => {
@@ -83,24 +111,36 @@ export default function RoomViewer() {
     }
   }
 
-  // Get the best asset URL for the model viewer
-  const getModelUrl = () => {
-    if (!room?.assets?.length) return null
-
-    // Prefer full > medium > preview
-    const fullAsset = room.assets.find(a => a.lod_level === 'full')
-    const mediumAsset = room.assets.find(a => a.lod_level === 'medium')
-    const previewAsset = room.assets.find(a => a.lod_level === 'preview')
-    const asset = fullAsset || mediumAsset || previewAsset || room.assets[0]
-
-    return `${API_BASE_URL}${asset.url}`
-  }
-
   const getDownloadAsset = () => {
     if (!room?.assets?.length) return null
     return room.assets.find(a => a.lod_level === 'full') ||
            room.assets.find(a => a.lod_level === 'medium') ||
            room.assets[0]
+  }
+
+  const handleDownload = async () => {
+    const asset = getDownloadAsset()
+    if (!asset?.url) return
+
+    try {
+      const token = getStoredToken()
+      const response = await fetch(`${API_BASE_URL}${asset.url}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (response.ok) {
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = asset.filename || 'scene.glb'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(blobUrl)
+      }
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
   }
 
   if (!user) return null
@@ -139,7 +179,6 @@ export default function RoomViewer() {
     )
   }
 
-  const modelUrl = getModelUrl()
   const downloadAsset = getDownloadAsset()
 
   return (
@@ -230,11 +269,11 @@ export default function RoomViewer() {
       {/* 3D Viewer */}
       <div className="bg-muted/50 rounded-xl border border-border overflow-hidden mb-6">
         <div className="aspect-video relative">
-          {modelUrl ? (
-            <ModelViewer url={modelUrl} className="w-full h-full" />
+          {modelBlobUrl ? (
+            <ModelViewer url={modelBlobUrl} className="w-full h-full" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              <p>No 3D model available</p>
+              <p>{isLoading ? 'Loading model...' : 'No 3D model available'}</p>
             </div>
           )}
         </div>
@@ -292,9 +331,8 @@ export default function RoomViewer() {
           <h3 className="text-sm font-medium text-foreground mb-4">Actions</h3>
           <div className="space-y-3">
             {downloadAsset && (
-              <a
-                href={`${API_BASE_URL}${downloadAsset.url}`}
-                download={downloadAsset.filename}
+              <button
+                onClick={handleDownload}
                 className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-brand hover:bg-brand-500 text-white font-medium rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -306,7 +344,7 @@ export default function RoomViewer() {
                     ({(downloadAsset.file_size_bytes / (1024 * 1024)).toFixed(1)} MB)
                   </span>
                 )}
-              </a>
+              </button>
             )}
             <Link
               to="/"
