@@ -50,9 +50,18 @@ export default function ResultsPreview({
   const [selectedProduct, setSelectedProduct] = useState<FurnitureProduct | null>(null)
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
 
+  // Furniture search from detection
+  const [detectedFurnitureQuery, setDetectedFurnitureQuery] = useState<string | undefined>()
+
   const handleProductSelect = useCallback((product: FurnitureProduct) => {
     setSelectedProduct(product)
     setIsProductModalOpen(true)
+  }, [])
+
+  // Handle search request from detected furniture marker
+  const handleSearchFurniture = useCallback((furnitureType: string) => {
+    // Set the query to trigger search in FurnitureSearch component
+    setDetectedFurnitureQuery(furnitureType)
   }, [])
 
   // Handle furniture changes from ModelViewer
@@ -142,6 +151,7 @@ export default function ResultsPreview({
                   onFurnitureChange={handleFurnitureChange}
                   onSelectionChange={handleSelectionChange}
                   enableFurnitureDetection={true}
+                  onSearchFurniture={handleSearchFurniture}
                 />
               ) : (
                 <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
@@ -173,7 +183,7 @@ export default function ResultsPreview({
         {/* Furniture Search - Takes 1/3 of the space on large screens */}
         <div className="lg:col-span-1 opacity-0 animate-slide-up" style={{ animationDelay: '0.5s' }}>
           <div className="rounded-xl border border-border/50 bg-muted/30 p-5 sm:p-6 h-full">
-            <FurnitureSearch onProductSelect={handleProductSelect} />
+            <FurnitureSearch onProductSelect={handleProductSelect} initialQuery={detectedFurnitureQuery} />
           </div>
         </div>
       </div>

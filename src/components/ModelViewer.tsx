@@ -38,6 +38,7 @@ interface ModelViewerProps {
   // Furniture detection settings
   enableFurnitureDetection?: boolean; // Enable YOLO-based furniture detection (shows button)
   onFurnitureDetected?: (detections: FurnitureDetection[]) => void; // Callback when furniture is detected
+  onSearchFurniture?: (furnitureType: string) => void; // Callback when user wants to search for detected furniture
 }
 
 const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelViewer(
@@ -50,6 +51,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     onSelectionChange,
     enableFurnitureDetection = false,
     onFurnitureDetected,
+    onSearchFurniture,
   },
   ref
 ) {
@@ -83,6 +85,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   // Furniture detection state (YOLO-based)
   const [detectedFurniture, setDetectedFurniture] = useState<FurnitureDetection[]>([]);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [selectedDetectionIndex, setSelectedDetectionIndex] = useState<number | null>(null);
 
   // Create grid texture for background
   const createGridTexture = useCallback(() => {
@@ -357,6 +360,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
 
     try {
       setIsDetecting(true);
+      setSelectedDetectionIndex(null); // Clear any open tooltip
 
       // Force a render to ensure we capture the current state
       rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -382,6 +386,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   // Clear detections
   const clearDetections = useCallback(() => {
     setDetectedFurniture([]);
+    setSelectedDetectionIndex(null);
   }, []);
 
   // Expose methods via ref
@@ -984,7 +989,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
             </button>
           </div>
 
-          {/* Detection markers overlay - Static circles on furniture centers */}
+          {/* Detection markers overlay - Clickable circles on furniture centers */}
           <div
             className="absolute inset-0 pointer-events-none overflow-hidden"
             style={{ borderRadius: 'inherit' }}
@@ -993,37 +998,144 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
               // Position based on normalized center coordinates (0-1)
               const left = `${detection.center.x * 100}%`;
               const top = `${detection.center.y * 100}%`;
+              const isSelected = selectedDetectionIndex === index;
+
+              // Determine tooltip position based on marker location
+              // If marker is on the right side (>60%), show tooltip on left
+              const showTooltipLeft = detection.center.x > 0.6;
+              // If marker is near bottom (>70%), show tooltip above
+              const showTooltipAbove = detection.center.y > 0.7;
 
               return (
                 <div
                   key={`detection-${index}-${detection.class_name}`}
                   className="absolute transform -translate-x-1/2 -translate-y-1/2"
-                  style={{ left, top }}
+                  style={{ left, top, zIndex: isSelected ? 50 : 10 }}
                 >
-                  {/* Outer pulse ring */}
-                  <div className="absolute inset-0 w-8 h-8 -m-4 rounded-full border-2 border-sky-400/50 animate-ping" />
+                  {/* Outer pulse ring - only show when not selected */}
+                  {!isSelected && (
+                    <div className="absolute inset-0 w-8 h-8 -m-4 rounded-full border-2 border-sky-400/50 animate-ping" />
+                  )}
 
-                  {/* Inner marker circle */}
-                  <div className="relative w-6 h-6 -m-3 rounded-full bg-sky-500/80 border-2 border-white shadow-lg flex items-center justify-center">
+                  {/* Inner marker circle - clickable */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDetectionIndex(isSelected ? null : index);
+                    }}
+                    className={`relative w-6 h-6 -m-3 rounded-full border-2 shadow-lg flex items-center justify-center transition-all pointer-events-auto cursor-pointer ${
+                      isSelected
+                        ? 'bg-sky-400 border-white scale-125 ring-4 ring-sky-400/30'
+                        : 'bg-sky-500/80 border-white hover:bg-sky-400 hover:scale-110'
+                    }`}
+                    title={`Click to see options for ${detection.class_name}`}
+                  >
                     <div className="w-2 h-2 rounded-full bg-white" />
-                  </div>
+                  </button>
 
-                  {/* Label with class name and confidence */}
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">
-                    <span className="font-medium capitalize">{detection.class_name}</span>
-                    <span className="ml-1 opacity-70">{Math.round(detection.confidence * 100)}%</span>
-                  </div>
+                  {/* Interactive Tooltip/Popover - shows when selected */}
+                  {isSelected && (
+                    <div
+                      className={`absolute pointer-events-auto ${
+                        showTooltipAbove ? 'bottom-full mb-3' : 'top-full mt-3'
+                      } ${
+                        showTooltipLeft ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'
+                      }`}
+                      style={{ minWidth: '200px' }}
+                    >
+                      {/* Arrow pointing to marker */}
+                      <div
+                        className={`absolute w-3 h-3 bg-gray-900 transform rotate-45 ${
+                          showTooltipAbove ? '-bottom-1.5' : '-top-1.5'
+                        } left-1/2 -translate-x-1/2`}
+                      />
+
+                      {/* Tooltip content */}
+                      <div className="relative bg-gray-900 rounded-lg shadow-xl border border-gray-700 overflow-hidden">
+                        {/* Header */}
+                        <div className="px-4 py-3 border-b border-gray-700/50">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-white font-semibold capitalize text-sm">
+                              {detection.class_name}
+                            </h4>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDetectionIndex(null);
+                              }}
+                              className="text-gray-400 hover:text-white transition-colors p-0.5"
+                              title="Close"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-gray-400 text-xs">
+                              Confidence: {Math.round(detection.confidence * 100)}%
+                            </span>
+                            <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-sky-500 rounded-full"
+                                style={{ width: `${detection.confidence * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Button */}
+                        <div className="p-3">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSearchFurniture?.(detection.class_name);
+                              setSelectedDetectionIndex(null);
+                            }}
+                            className="w-full px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            Find Similar {detection.class_name}
+                          </button>
+                          <p className="text-gray-500 text-xs text-center mt-2">
+                            Search our furniture catalog
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Small label - only show when NOT selected */}
+                  {!isSelected && (
+                    <div className={`absolute whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded backdrop-blur-sm pointer-events-none ${
+                      showTooltipLeft ? 'right-full mr-2' : 'left-full ml-2'
+                    } top-1/2 -translate-y-1/2`}>
+                      <span className="font-medium capitalize">{detection.class_name}</span>
+                      <span className="ml-1 opacity-70">{Math.round(detection.confidence * 100)}%</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             {/* Detection count badge */}
             {detectedFurniture.length > 0 && !isDetecting && (
-              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-sky-500/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm">
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-sky-500/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm pointer-events-none">
                 {detectedFurniture.length} furniture item{detectedFurniture.length !== 1 ? 's' : ''} detected
+                <span className="ml-1 opacity-70">· Click markers to search</span>
               </div>
             )}
           </div>
+
+          {/* Click outside to close tooltip */}
+          {selectedDetectionIndex !== null && (
+            <div
+              className="absolute inset-0 z-0"
+              onClick={() => setSelectedDetectionIndex(null)}
+            />
+          )}
         </>
       )}
 

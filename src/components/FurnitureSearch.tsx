@@ -39,6 +39,7 @@ function ProductImage({ url, alt }: { url?: string; alt: string }) {
 
 interface FurnitureSearchProps {
   onProductSelect?: (product: FurnitureProduct) => void
+  initialQuery?: string // Pre-fill search from detected furniture
 }
 
 // Static filter options
@@ -46,7 +47,7 @@ const CATEGORIES = ['Chair', 'Table', 'Desk', 'Sofa', 'Bed', 'Lamp', 'Shelf', 'C
 const STYLES = ['Modern', 'Minimalist', 'Industrial', 'Rustic', 'Scandinavian', 'Mid-century']
 const MATERIALS = ['Wood', 'Metal', 'Fabric', 'Leather', 'Glass', 'Plastic']
 
-export default function FurnitureSearch({ onProductSelect }: FurnitureSearchProps) {
+export default function FurnitureSearch({ onProductSelect, initialQuery }: FurnitureSearchProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FurnitureProduct[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -87,6 +88,32 @@ export default function FurnitureSearch({ onProductSelect }: FurnitureSearchProp
       })
       .catch(err => console.error('Failed to detect location:', err))
   }, [])
+
+  // Handle initial query from detected furniture (auto-search)
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      setQuery(initialQuery)
+      // Trigger search after setting query - use setTimeout to ensure state is updated
+      const searchWithQuery = async () => {
+        setIsLoading(true)
+        setError(null)
+        setHasSearched(true)
+        try {
+          console.log('Auto-searching for detected furniture:', initialQuery)
+          const response = await searchFurniture(initialQuery, 5, userCountry)
+          setResults(response.results)
+        } catch (err) {
+          console.error('Search error:', err)
+          const errorMessage = err instanceof Error ? err.message : 'Search failed'
+          setError(errorMessage)
+          setResults([])
+        } finally {
+          setIsLoading(false)
+        }
+      }
+      searchWithQuery()
+    }
+  }, [initialQuery, userCountry])
 
   // Build the full query with filters
   const buildSearchQuery = useCallback(() => {
