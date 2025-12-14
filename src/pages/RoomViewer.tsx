@@ -13,6 +13,8 @@ export default function RoomViewer() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [modelBlobUrl, setModelBlobUrl] = useState<string | null>(null)
+  const [isModelLoading, setIsModelLoading] = useState(false)
+  const [modelLoadProgress, setModelLoadProgress] = useState(0)
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false)
@@ -43,21 +45,57 @@ export default function RoomViewer() {
         setEditDescription(roomData.description || '')
 
         // Fetch the GLB with auth and create a blob URL
+        // Prefer preview (smallest) for fast initial load
         if (roomData.assets?.length) {
-          const fullAsset = roomData.assets.find(a => a.lod_level === 'full')
-          const mediumAsset = roomData.assets.find(a => a.lod_level === 'medium')
           const previewAsset = roomData.assets.find(a => a.lod_level === 'preview')
-          const asset = fullAsset || mediumAsset || previewAsset || roomData.assets[0]
+          const mediumAsset = roomData.assets.find(a => a.lod_level === 'medium')
+          const fullAsset = roomData.assets.find(a => a.lod_level === 'full')
+          const asset = previewAsset || mediumAsset || fullAsset || roomData.assets[0]
 
           if (asset?.url) {
+            setIsModelLoading(true)
+            setModelLoadProgress(0)
             const token = getStoredToken()
-            const response = await fetch(`${API_BASE_URL}${asset.url}`, {
-              headers: token ? { Authorization: `Bearer ${token}` } : {},
-            })
-            if (response.ok) {
-              const blob = await response.blob()
-              const blobUrl = URL.createObjectURL(blob)
-              setModelBlobUrl(blobUrl)
+
+            try {
+              const response = await fetch(`${API_BASE_URL}${asset.url}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              })
+
+              if (response.ok) {
+                // Track download progress if content-length is available
+                const contentLength = response.headers.get('content-length')
+                const total = contentLength ? parseInt(contentLength, 10) : 0
+
+                if (total > 0 && response.body) {
+                  const reader = response.body.getReader()
+                  const chunks: Uint8Array[] = []
+                  let received = 0
+
+                  while (true) {
+                    const { done, value } = await reader.read()
+                    if (done) break
+                    chunks.push(value)
+                    received += value.length
+                    setModelLoadProgress(Math.round((received / total) * 100))
+                  }
+
+                  const blob = new Blob(chunks)
+                  const blobUrl = URL.createObjectURL(blob)
+                  setModelBlobUrl(blobUrl)
+                } else {
+                  // Fallback if no content-length
+                  const blob = await response.blob()
+                  const blobUrl = URL.createObjectURL(blob)
+                  setModelBlobUrl(blobUrl)
+                }
+              } else {
+                console.error('Failed to load model:', response.status)
+              }
+            } catch (err) {
+              console.error('Model fetch error:', err)
+            } finally {
+              setIsModelLoading(false)
             }
           }
         }
@@ -272,8 +310,28 @@ export default function RoomViewer() {
           {modelBlobUrl ? (
             <ModelViewer url={modelBlobUrl} className="w-full h-full" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              <p>{isLoading ? 'Loading model...' : 'No 3D model available'}</p>
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-4">
+              {isModelLoading ? (
+                <>
+                  <div className="w-12 h-12 rounded-full border-4 border-muted border-t-brand animate-spin" />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-foreground mb-1">Loading 3D Model</p>
+                    <p className="text-xs text-muted-foreground">
+                      {modelLoadProgress > 0 ? `${modelLoadProgress}%` : 'Connecting...'}
+                    </p>
+                    {modelLoadProgress > 0 && (
+                      <div className="w-48 h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
+                        <div
+                          className="h-full bg-brand rounded-full transition-all duration-300"
+                          style={{ width: `${modelLoadProgress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p>{isLoading ? 'Loading room data...' : 'No 3D model available'}</p>
+              )}
             </div>
           )}
         </div>
