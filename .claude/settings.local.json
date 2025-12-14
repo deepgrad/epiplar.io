@@ -32,7 +32,9 @@
       "Bash(bun run lint)",
       "Bash(git reset:*)",
       "WebFetch(domain:discourse.threejs.org)",
-      "WebFetch(domain:ai.google.dev)"
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(python -m py_compile:*)",
+      "Bash(git push:*)"
     ]
   }
 }
