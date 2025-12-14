@@ -386,18 +386,19 @@ Generate the composite image now."""
 
         try:
             # Call Gemini API with images and prompt
+            # The google-genai library accepts a simple list of content items
+            # where strings are text and PIL Images are automatically handled
             from google.genai import types
 
             response = client.models.generate_content(
                 model=self._model_name,
                 contents=[
-                    types.Part.from_text(prompt),
-                    types.Part.from_image(room_image),
-                    types.Part.from_image(furniture_image),
+                    prompt,  # Text prompt as string
+                    room_image,  # PIL Image - room screenshot
+                    furniture_image,  # PIL Image - furniture to place
                 ],
                 config=types.GenerateContentConfig(
-                    response_modalities=["image", "text"],
-                    response_mime_type="image/png",
+                    response_modalities=["IMAGE", "TEXT"],
                 )
             )
 
