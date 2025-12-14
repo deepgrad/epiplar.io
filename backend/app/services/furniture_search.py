@@ -51,9 +51,9 @@ class FurnitureSearchService:
         self.df = pd.read_csv(self.csv_path)
         logger.info(f"Loaded {len(self.df)} products")
 
-        # Load embedding model on CPU to reserve GPU memory for DA3
-        logger.info("Loading embedding model (all-MiniLM-L6-v2) on CPU...")
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+        # Load embedding model on GPU for faster inference
+        logger.info("Loading embedding model (all-MiniLM-L6-v2) on GPU...")
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cuda')
 
         # Create embeddings
         logger.info("Creating product embeddings...")

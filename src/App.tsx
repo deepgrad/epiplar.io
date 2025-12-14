@@ -7,6 +7,8 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Pricing from './pages/Pricing'
 import Profile from './pages/Profile'
+import MyRooms from './pages/MyRooms'
+import RoomViewer from './pages/RoomViewer'
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
               <Route path="/register" element={<Register />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/my-rooms" element={<MyRooms />} />
+              <Route path="/room/:roomId" element={<RoomViewer />} />
             </Routes>
           </Layout>
         </BrowserRouter>

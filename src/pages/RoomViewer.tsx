@@ -1,0 +1,556 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { getRoom, deleteRoom, updateRoom, Room, API_BASE_URL, getStoredToken } from '../services/api'
+import ModelViewer from '../components/ModelViewer'
+
+export default function RoomViewer() {
+  const { roomId } = useParams<{ roomId: string }>()
+  const { user } = useAuth()
+  const navigate = useNavigate()
+
+  const [room, setRoom] = useState<Room | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [modelBlobUrl, setModelBlobUrl] = useState<string | null>(null)
+  const [isModelLoading, setIsModelLoading] = useState(false)
+  const [modelLoadProgress, setModelLoadProgress] = useState(0)
+  const [currentLodLevel, setCurrentLodLevel] = useState<string | null>(null)
+
+  // Edit state
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/login')
+      return
+    }
+
+    const fetchRoom = async () => {
+      if (!roomId) return
+
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const roomData = await getRoom(parseInt(roomId))
+        setRoom(roomData)
+        setEditName(roomData.name)
+        setEditDescription(roomData.description || '')
+
+        // Fetch the GLB with auth and create a blob URL
+        // Prefer preview (smallest) for fast initial load
+        if (roomData.assets?.length) {
+          const previewAsset = roomData.assets.find(a => a.lod_level === 'preview')
+          const mediumAsset = roomData.assets.find(a => a.lod_level === 'medium')
+          const fullAsset = roomData.assets.find(a => a.lod_level === 'full')
+          const asset = previewAsset || mediumAsset || fullAsset || roomData.assets[0]
+
+          if (asset?.url) {
+            setIsModelLoading(true)
+            setModelLoadProgress(0)
+            const token = getStoredToken()
+
+            try {
+              const response = await fetch(`${API_BASE_URL}${asset.url}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              })
+
+              if (response.ok) {
+                // Track download progress if content-length is available
+                const contentLength = response.headers.get('content-length')
+                const total = contentLength ? parseInt(contentLength, 10) : 0
+
+                if (total > 0 && response.body) {
+                  const reader = response.body.getReader()
+                  const chunks: Uint8Array[] = []
+                  let received = 0
+
+                  while (true) {
+                    const { done, value } = await reader.read()
+                    if (done) break
+                    chunks.push(value)
+                    received += value.length
+                    setModelLoadProgress(Math.round((received / total) * 100))
+                  }
+
+                  const blob = new Blob(chunks)
+                  const blobUrl = URL.createObjectURL(blob)
+                  setModelBlobUrl(blobUrl)
+                  setCurrentLodLevel(asset.lod_level || 'unknown')
+                } else {
+                  // Fallback if no content-length
+                  const blob = await response.blob()
+                  const blobUrl = URL.createObjectURL(blob)
+                  setModelBlobUrl(blobUrl)
+                  setCurrentLodLevel(asset.lod_level || 'unknown')
+                }
+              } else {
+                console.error('Failed to load model:', response.status)
+              }
+            } catch (err) {
+              console.error('Model fetch error:', err)
+            } finally {
+              setIsModelLoading(false)
+            }
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load room')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchRoom()
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (modelBlobUrl) {
+        URL.revokeObjectURL(modelBlobUrl)
+      }
+    }
+  }, [user, roomId, navigate])
+
+  const handleSaveEdit = async () => {
+    if (!room || !editName.trim()) return
+
+    setIsSaving(true)
+    try {
+      const updated = await updateRoom(room.id, {
+        name: editName.trim(),
+        description: editDescription.trim() || undefined,
+      })
+      setRoom(updated)
+      setIsEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update room')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!room) return
+
+    setIsDeleting(true)
+    try {
+      await deleteRoom(room.id)
+      navigate('/my-rooms')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete room')
+      setShowDeleteModal(false)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const getDownloadAsset = () => {
+    if (!room?.assets?.length) return null
+    return room.assets.find(a => a.lod_level === 'full') ||
+           room.assets.find(a => a.lod_level === 'medium') ||
+           room.assets[0]
+  }
+
+  const handleDownload = async () => {
+    const asset = getDownloadAsset()
+    if (!asset?.url) return
+
+    try {
+      const token = getStoredToken()
+      const response = await fetch(`${API_BASE_URL}${asset.url}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (response.ok) {
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = asset.filename || 'scene.glb'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(blobUrl)
+      }
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
+  }
+
+  const loadFullQuality = async () => {
+    if (!room?.assets?.length) return
+    const fullAsset = room.assets.find(a => a.lod_level === 'full')
+    if (!fullAsset?.url) return
+
+    // Revoke old blob URL
+    if (modelBlobUrl) {
+      URL.revokeObjectURL(modelBlobUrl)
+      setModelBlobUrl(null)
+    }
+
+    setIsModelLoading(true)
+    setModelLoadProgress(0)
+    const token = getStoredToken()
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${fullAsset.url}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+
+      if (response.ok) {
+        const contentLength = response.headers.get('content-length')
+        const total = contentLength ? parseInt(contentLength, 10) : 0
+
+        if (total > 0 && response.body) {
+          const reader = response.body.getReader()
+          const chunks: Uint8Array[] = []
+          let received = 0
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            chunks.push(value)
+            received += value.length
+            setModelLoadProgress(Math.round((received / total) * 100))
+          }
+
+          const blob = new Blob(chunks)
+          const blobUrl = URL.createObjectURL(blob)
+          setModelBlobUrl(blobUrl)
+          setCurrentLodLevel('full')
+        } else {
+          const blob = await response.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          setModelBlobUrl(blobUrl)
+          setCurrentLodLevel('full')
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load full quality:', err)
+    } finally {
+      setIsModelLoading(false)
+    }
+  }
+
+  const hasFullQuality = room?.assets?.some(a => a.lod_level === 'full')
+  const canUpgradeQuality = hasFullQuality && currentLodLevel !== 'full' && !isModelLoading
+
+  if (!user) return null
+
+  if (isLoading) {
+    return (
+      <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 py-12 w-full">
+        <div className="animate-pulse">
+          <div className="h-8 bg-accent rounded w-1/3 mb-4" />
+          <div className="aspect-video bg-accent rounded-xl mb-6" />
+          <div className="h-4 bg-accent rounded w-1/2" />
+        </div>
+      </main>
+    )
+  }
+
+  if (error || !room) {
+    return (
+      <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 py-12 w-full">
+        <div className="text-center py-16">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-red-500/10 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-foreground mb-2">Room Not Found</h2>
+          <p className="text-sm text-muted-foreground mb-6">{error || 'The room you are looking for does not exist.'}</p>
+          <Link
+            to="/my-rooms"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-500 text-white font-medium rounded-lg transition-colors"
+          >
+            Back to My Rooms
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
+  const downloadAsset = getDownloadAsset()
+
+  return (
+    <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 w-full">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <Link to="/my-rooms" className="hover:text-foreground transition-colors">
+          My Rooms
+        </Link>
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="text-foreground">{room.name}</span>
+      </div>
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+        {isEditing ? (
+          <div className="flex-1 space-y-3">
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full px-4 py-2 bg-muted border border-border rounded-lg text-foreground text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-brand/50"
+              placeholder="Room name"
+              autoFocus
+            />
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              className="w-full px-4 py-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-brand/50 resize-none"
+              placeholder="Add a description..."
+              rows={2}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveEdit}
+                disabled={!editName.trim() || isSaving}
+                className="px-4 py-2 bg-brand hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsEditing(false)
+                  setEditName(room.name)
+                  setEditDescription(room.description || '')
+                }}
+                className="px-4 py-2 bg-accent hover:bg-accent/80 text-foreground text-sm font-medium rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">{room.name}</h1>
+            {room.description && (
+              <p className="text-sm text-muted-foreground">{room.description}</p>
+            )}
+          </div>
+        )}
+
+        {!isEditing && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+              title="Edit"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+              title="Delete"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 3D Viewer */}
+      <div className="bg-muted/50 rounded-xl border border-border overflow-hidden mb-6">
+        <div className="aspect-video relative">
+          {modelBlobUrl ? (
+            <>
+              <ModelViewer url={modelBlobUrl} className="w-full h-full" />
+              {/* Quality indicator and upgrade button */}
+              <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                {currentLodLevel && currentLodLevel !== 'full' && (
+                  <span className="px-2 py-1 bg-black/60 text-white text-xs rounded">
+                    {currentLodLevel === 'preview' ? 'Preview' : 'Medium'} Quality
+                  </span>
+                )}
+                {currentLodLevel === 'full' && (
+                  <span className="px-2 py-1 bg-green-500/80 text-white text-xs rounded">
+                    Full Quality
+                  </span>
+                )}
+                {canUpgradeQuality && (
+                  <button
+                    onClick={loadFullQuality}
+                    className="px-3 py-1.5 bg-brand hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Load Full Quality
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-4">
+              {isModelLoading ? (
+                <>
+                  <div className="w-12 h-12 rounded-full border-4 border-muted border-t-brand animate-spin" />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-foreground mb-1">Loading 3D Model</p>
+                    <p className="text-xs text-muted-foreground">
+                      {modelLoadProgress > 0 ? `${modelLoadProgress}%` : 'Connecting...'}
+                    </p>
+                    {modelLoadProgress > 0 && (
+                      <div className="w-48 h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
+                        <div
+                          className="h-full bg-brand rounded-full transition-all duration-300"
+                          style={{ width: `${modelLoadProgress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p>{isLoading ? 'Loading room data...' : 'No 3D model available'}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Room Info & Actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* Stats */}
+        <div className="bg-muted/50 rounded-xl border border-border p-5">
+          <h3 className="text-sm font-medium text-foreground mb-4">Room Details</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Created</span>
+              <span className="text-foreground">
+                {new Date(room.created_at).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">File Size</span>
+              <span className="text-foreground">{room.file_size_display}</span>
+            </div>
+            {room.frame_count && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Frames</span>
+                <span className="text-foreground">{room.frame_count}</span>
+              </div>
+            )}
+            {room.point_count && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Points</span>
+                <span className="text-foreground">{(room.point_count / 1000000).toFixed(2)}M</span>
+              </div>
+            )}
+            {room.model_used && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Model</span>
+                <span className="text-foreground">{room.model_used}</span>
+              </div>
+            )}
+            {room.original_width && room.original_height && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Resolution</span>
+                <span className="text-foreground">{room.original_width} x {room.original_height}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="bg-muted/50 rounded-xl border border-border p-5">
+          <h3 className="text-sm font-medium text-foreground mb-4">Actions</h3>
+          <div className="space-y-3">
+            {downloadAsset && (
+              <button
+                onClick={handleDownload}
+                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-brand hover:bg-brand-500 text-white font-medium rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download GLB
+                {downloadAsset.file_size_bytes && (
+                  <span className="text-xs opacity-75">
+                    ({(downloadAsset.file_size_bytes / (1024 * 1024)).toFixed(1)} MB)
+                  </span>
+                )}
+              </button>
+            )}
+            <Link
+              to="/"
+              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-accent hover:bg-accent/80 text-foreground font-medium rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Scan
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-background border border-border rounded-xl shadow-xl w-full max-w-md p-6 animate-scale-in">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-1">Delete Room</h3>
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to delete "{room.name}"? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 px-4 py-2.5 bg-accent hover:bg-accent/80 text-foreground font-medium rounded-lg transition-colors"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  )
+}

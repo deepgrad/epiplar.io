@@ -1,5 +1,6 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query, Depends
 from fastapi.responses import FileResponse
+from fastapi.security import OAuth2PasswordBearer
 from pathlib import Path
 import asyncio
 import logging
@@ -8,8 +9,11 @@ from typing import Optional
 from ..models.schemas import ProcessVideoRequest, ProcessingResult, JobStatus, ProgressUpdate
 from ..services.depth_service import depth_service
 from ..services.video_service import video_service
+from ..services.auth_service import get_current_user_optional
 from ..utils.file_utils import save_upload_file, cleanup_job, get_disk_usage, get_job_directories, cleanup_old_jobs
 from ..config import settings
+from ..db.database import async_session
+from ..db.models import User, UserActivity
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ async def upload_video(file: UploadFile = File(...)):
         "progress": None,
         "result": None,
         "error": None,
+        "user_id": None,  # Will be set when processing starts if authenticated
     }
 
     logger.info(f"Video uploaded: {job_id}")
@@ -50,6 +55,7 @@ async def start_processing(
     job_id: str,
     request: ProcessVideoRequest = ProcessVideoRequest(),
     background_tasks: BackgroundTasks = None,
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Start processing a previously uploaded video."""
     if job_id not in jobs:
@@ -59,7 +65,23 @@ async def start_processing(
     if job["status"] not in ["uploaded", "failed"]:
         raise HTTPException(400, f"Job already {job['status']}")
 
+    # Check scan limits if user is authenticated
+    user_id = None
+    if current_user:
+        user_id = current_user.id
+        plan_limits = current_user.plan_limits
+        scans_limit = plan_limits["scans_per_month"]
+
+        # Check if user has reached their scan limit (-1 = unlimited)
+        if scans_limit != -1 and current_user.scans_this_month >= scans_limit:
+            raise HTTPException(
+                403,
+                f"Monthly scan limit reached ({scans_limit} scans). "
+                f"Upgrade to Pro for unlimited scans."
+            )
+
     job["status"] = "processing"
+    job["user_id"] = user_id
 
     # Run processing in background
     background_tasks.add_task(
@@ -67,6 +89,7 @@ async def start_processing(
         job_id,
         Path(job["file_path"]),
         request.max_frames,
+        user_id,
     )
 
     return {"status": "processing", "job_id": job_id}
@@ -75,6 +98,7 @@ async def process_video_task(
     job_id: str,
     video_path: Path,
     max_frames: int,
+    user_id: Optional[int] = None,
 ):
     """Background task to process video."""
     try:
@@ -107,7 +131,31 @@ async def process_video_task(
         jobs[job_id]["result"] = result.model_dump()
 
         logger.info(f"Job completed: {job_id}")
-        
+
+        # Update user scan counts if authenticated
+        if user_id:
+            try:
+                async with async_session() as db:
+                    from sqlalchemy import select
+                    result_user = await db.execute(select(User).where(User.id == user_id))
+                    user = result_user.scalar_one_or_none()
+                    if user:
+                        user.scans_this_month = (user.scans_this_month or 0) + 1
+                        user.total_scans = (user.total_scans or 0) + 1
+
+                        # Log activity
+                        activity = UserActivity(
+                            user_id=user_id,
+                            action="scan_completed",
+                            description=f"Completed room scan: {job_id}",
+                            metadata_json=f'{{"job_id": "{job_id}", "frames": {len(frames)}}}'
+                        )
+                        db.add(activity)
+                        await db.commit()
+                        logger.info(f"Updated scan count for user {user_id}")
+            except Exception as e:
+                logger.error(f"Failed to update user scan count: {e}")
+
         # Auto-cleanup if enabled
         if settings.auto_cleanup_after_completion:
             logger.info(f"Auto-cleaning up job {job_id} after completion")

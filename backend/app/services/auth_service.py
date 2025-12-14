@@ -12,6 +12,7 @@ from ..db.database import get_db
 from ..db.models import User, UserActivity
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -114,9 +115,10 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme_optional),
     db: AsyncSession = Depends(get_db)
 ) -> Optional[User]:
+    """Optional auth - returns None if no token or invalid token."""
     if not token:
         return None
     try:

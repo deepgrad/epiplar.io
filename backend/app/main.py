@@ -13,6 +13,7 @@ from .api.websocket import router as ws_router
 from .api.auth_routes import router as auth_router
 from .api.furniture_routes import router as furniture_router
 from .api.profile_routes import router as profile_router
+from .api.room_routes import router as room_router
 from .db.database import init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +98,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(api_router, prefix="/api")
 app.include_router(furniture_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(room_router, prefix="/api")
 app.include_router(ws_router)
 
 @app.get("/health")
