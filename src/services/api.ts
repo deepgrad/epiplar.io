@@ -187,6 +187,7 @@ export interface JobStatus {
 
 export interface ProcessOptions {
   maxFrames?: number;
+  frameInterval?: number;
 }
 
 /**
@@ -224,6 +225,7 @@ export async function startProcessing(
     },
     body: JSON.stringify({
       max_frames: options.maxFrames ?? 128,
+      frame_interval: options.frameInterval,
     }),
   });
 
