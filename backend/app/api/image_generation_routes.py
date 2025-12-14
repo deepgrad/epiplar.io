@@ -95,7 +95,6 @@ async def replace_furniture(request: FurnitureReplacementRequest) -> FurnitureRe
 
         return FurnitureReplacementResponse(
             generated_image_base64=result["generated_image_base64"],
-            prompt_used=result["prompt_used"],
             generation_time_seconds=result["generation_time_seconds"],
             model_used=result["model_used"],
             cache_hit=result["cache_hit"]
