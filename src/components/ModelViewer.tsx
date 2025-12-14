@@ -950,41 +950,34 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
       {enableFurnitureDetection && (
         <>
           {/* Detection Button - Bottom right */}
-          <div className="absolute bottom-4 right-4 flex gap-2">
+          <div className="absolute bottom-4 right-4 flex gap-2 items-center">
             {detectedFurniture.length > 0 && (
               <button
                 onClick={clearDetections}
-                className="px-3 py-2 bg-black/60 hover:bg-black/80 text-white text-xs rounded-lg backdrop-blur-sm transition-colors flex items-center gap-2"
+                className="w-10 h-10 rounded-full bg-muted/90 hover:bg-muted border border-border/50 backdrop-blur-sm transition-all duration-300 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-brand/50 hover:shadow-lg btn-press"
                 title="Clear detections"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                Clear
               </button>
             )}
             <button
               onClick={runFurnitureDetection}
               disabled={isDetecting}
-              className={`px-4 py-2 rounded-lg backdrop-blur-sm transition-colors flex items-center gap-2 text-sm font-medium ${
+              className={`w-12 h-12 rounded-full backdrop-blur-sm transition-all duration-300 flex items-center justify-center shadow-lg border-2 btn-press ${
                 isDetecting
-                  ? 'bg-sky-500/50 text-white/70 cursor-wait'
-                  : 'bg-sky-500 hover:bg-sky-600 text-white'
+                  ? 'bg-brand-500/70 border-brand-400/50 text-white cursor-wait'
+                  : 'bg-brand-600 hover:bg-brand-500 border-brand-400/60 hover:border-brand-300 text-white hover:shadow-xl hover:scale-105 active:scale-95'
               }`}
-              title="Detect furniture in current view"
+              title={isDetecting ? "Detecting furniture..." : "Detect furniture in current view"}
             >
               {isDetecting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Detecting...
-                </>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Detect Furniture
-                </>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                </svg>
               )}
             </button>
           </div>
