@@ -141,6 +141,7 @@ export default function ResultsPreview({
                   editMode={editMode}
                   onFurnitureChange={handleFurnitureChange}
                   onSelectionChange={handleSelectionChange}
+                  enableFurnitureDetection={true}
                 />
               ) : (
                 <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">

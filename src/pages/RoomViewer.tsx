@@ -370,7 +370,7 @@ export default function RoomViewer() {
         <div className="aspect-video relative">
           {modelBlobUrl ? (
             <>
-              <ModelViewer url={modelBlobUrl} className="w-full h-full" />
+              <ModelViewer url={modelBlobUrl} className="w-full h-full" enableFurnitureDetection={true} />
               {/* Quality indicator and upgrade button */}
               <div className="absolute bottom-4 right-4 flex items-center gap-2">
                 {currentLodLevel && currentLodLevel !== 'full' && (
