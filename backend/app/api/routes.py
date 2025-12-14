@@ -257,3 +257,127 @@ async def cleanup_jobs(
         **result,
         "disk_usage_after": disk_info,
     }
+
+@router.get("/admin/memory")
+async def get_memory_info():
+    """Get current memory usage (RAM and GPU)."""
+    import psutil
+    import gc
+    
+    # System RAM
+    ram = psutil.virtual_memory()
+    
+    result = {
+        "ram": {
+            "total_gb": round(ram.total / (1024**3), 2),
+            "used_gb": round(ram.used / (1024**3), 2),
+            "available_gb": round(ram.available / (1024**3), 2),
+            "percent": ram.percent,
+        },
+        "gpu": None,
+    }
+    
+    # GPU memory (if available)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            gpu_allocated = torch.cuda.memory_allocated(0) / (1024**3)
+            gpu_reserved = torch.cuda.memory_reserved(0) / (1024**3)
+            gpu_free = gpu_memory - gpu_reserved
+            
+            result["gpu"] = {
+                "total_gb": round(gpu_memory, 2),
+                "allocated_gb": round(gpu_allocated, 2),
+                "reserved_gb": round(gpu_reserved, 2),
+                "free_gb": round(gpu_free, 2),
+                "percent": round((gpu_reserved / gpu_memory) * 100, 2) if gpu_memory > 0 else 0,
+            }
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning(f"Could not get GPU memory info: {e}")
+    
+    # Python garbage collection stats
+    gc_stats = gc.get_stats()
+    result["python_gc"] = {
+        "collections": sum(stat["collections"] for stat in gc_stats),
+        "collected": sum(stat["collected"] for stat in gc_stats),
+    }
+    
+    return result
+
+@router.post("/admin/clear-memory")
+async def clear_memory(
+    clear_gpu: bool = Query(True, description="Clear GPU/CUDA cache"),
+    clear_ram: bool = Query(True, description="Run Python garbage collection"),
+    clear_model: bool = Query(False, description="Unload the DA3 model from memory (will need to reload on next inference)"),
+):
+    """
+    Clear memory (RAM and GPU).
+    
+    - clear_gpu: Clears PyTorch CUDA cache
+    - clear_ram: Runs Python garbage collection
+    - clear_model: Unloads the DA3 model (saves most memory but requires reload)
+    """
+    import gc
+    
+    result = {
+        "gpu_cleared": False,
+        "ram_cleared": False,
+        "model_cleared": False,
+        "memory_before": None,
+        "memory_after": None,
+    }
+    
+    # Get memory before
+    try:
+        memory_info = await get_memory_info()
+        result["memory_before"] = memory_info
+    except Exception as e:
+        logger.warning(f"Could not get memory info before: {e}")
+    
+    # Clear GPU memory
+    if clear_gpu:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                result["gpu_cleared"] = True
+                logger.info("GPU cache cleared")
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"Could not clear GPU cache: {e}")
+    
+    # Clear Python model from memory
+    if clear_model:
+        try:
+            depth_service._model = None
+            depth_service._device = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            result["model_cleared"] = True
+            logger.info("DA3 model unloaded from memory")
+        except Exception as e:
+            logger.warning(f"Could not unload model: {e}")
+    
+    # Clear RAM (garbage collection)
+    if clear_ram:
+        try:
+            collected = gc.collect()
+            result["ram_cleared"] = True
+            result["gc_collected"] = collected
+            logger.info(f"Garbage collection: {collected} objects collected")
+        except Exception as e:
+            logger.warning(f"Could not run garbage collection: {e}")
+    
+    # Get memory after
+    try:
+        memory_info = await get_memory_info()
+        result["memory_after"] = memory_info
+    except Exception as e:
+        logger.warning(f"Could not get memory info after: {e}")
+    
+    return result
