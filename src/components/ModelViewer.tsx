@@ -1014,7 +1014,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                 >
                   {/* Outer pulse ring - only show when not selected */}
                   {!isSelected && (
-                    <div className="absolute inset-0 w-8 h-8 -m-4 rounded-full border-2 border-sky-400/50 animate-ping" />
+                    <div className="absolute inset-0 w-8 h-8 -m-4 rounded-full border-2 border-brand-400/60 animate-ping" />
                   )}
 
                   {/* Inner marker circle - clickable */}
@@ -1025,8 +1025,8 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                     }}
                     className={`relative w-6 h-6 -m-3 rounded-full border-2 shadow-lg flex items-center justify-center transition-all pointer-events-auto cursor-pointer ${
                       isSelected
-                        ? 'bg-sky-400 border-white scale-125 ring-4 ring-sky-400/30'
-                        : 'bg-sky-500/80 border-white hover:bg-sky-400 hover:scale-110'
+                        ? 'bg-brand-500 border-white scale-125 ring-4 ring-brand-400/40'
+                        : 'bg-brand-600/90 border-white hover:bg-brand-500 hover:scale-110'
                     }`}
                     title={`Click to see options for ${detection.class_name}`}
                   >
@@ -1045,17 +1045,17 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                     >
                       {/* Arrow pointing to marker */}
                       <div
-                        className={`absolute w-3 h-3 bg-gray-900 transform rotate-45 ${
+                        className={`absolute w-3 h-3 bg-muted border border-border transform rotate-45 ${
                           showTooltipAbove ? '-bottom-1.5' : '-top-1.5'
                         } left-1/2 -translate-x-1/2`}
                       />
 
                       {/* Tooltip content */}
-                      <div className="relative bg-gray-900 rounded-lg shadow-xl border border-gray-700 overflow-hidden">
+                      <div className="relative bg-muted/95 backdrop-blur-sm rounded-xl shadow-xl border border-border overflow-hidden">
                         {/* Header */}
-                        <div className="px-4 py-3 border-b border-gray-700/50">
+                        <div className="px-4 py-3 border-b border-border/50 bg-muted/50">
                           <div className="flex items-center justify-between">
-                            <h4 className="text-white font-semibold capitalize text-sm">
+                            <h4 className="text-foreground font-semibold capitalize text-sm">
                               {detection.class_name}
                             </h4>
                             <button
@@ -1063,7 +1063,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                                 e.stopPropagation();
                                 setSelectedDetectionIndex(null);
                               }}
-                              className="text-gray-400 hover:text-white transition-colors p-0.5"
+                              className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-accent"
                               title="Close"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1071,13 +1071,13 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                               </svg>
                             </button>
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-gray-400 text-xs">
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-muted-foreground text-xs">
                               Confidence: {Math.round(detection.confidence * 100)}%
                             </span>
-                            <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="flex-1 h-1.5 bg-accent rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-sky-500 rounded-full"
+                                className="h-full bg-brand-500 rounded-full transition-all duration-300"
                                 style={{ width: `${detection.confidence * 100}%` }}
                               />
                             </div>
@@ -1085,21 +1085,21 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                         </div>
 
                         {/* Action Button */}
-                        <div className="p-3">
+                        <div className="p-3 bg-muted/30">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               onSearchFurniture?.(detection.class_name);
                               setSelectedDetectionIndex(null);
                             }}
-                            className="w-full px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                            className="w-full px-4 py-2.5 bg-brand hover:bg-brand-500 text-white text-sm font-medium rounded-lg transition-all duration-300 flex items-center justify-center gap-2 btn-press"
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                             Find Similar {detection.class_name}
                           </button>
-                          <p className="text-gray-500 text-xs text-center mt-2">
+                          <p className="text-muted-foreground text-xs text-center mt-2">
                             Search our furniture catalog
                           </p>
                         </div>
@@ -1109,11 +1109,11 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
 
                   {/* Small label - only show when NOT selected */}
                   {!isSelected && (
-                    <div className={`absolute whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded backdrop-blur-sm pointer-events-none ${
+                    <div className={`absolute whitespace-nowrap bg-muted/90 backdrop-blur-sm text-foreground text-xs px-2.5 py-1 rounded-lg border border-border/50 pointer-events-none shadow-lg ${
                       showTooltipLeft ? 'right-full mr-2' : 'left-full ml-2'
                     } top-1/2 -translate-y-1/2`}>
                       <span className="font-medium capitalize">{detection.class_name}</span>
-                      <span className="ml-1 opacity-70">{Math.round(detection.confidence * 100)}%</span>
+                      <span className="ml-1.5 text-muted-foreground">{Math.round(detection.confidence * 100)}%</span>
                     </div>
                   )}
                 </div>
@@ -1122,9 +1122,9 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
 
             {/* Detection count badge */}
             {detectedFurniture.length > 0 && !isDetecting && (
-              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-sky-500/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm pointer-events-none">
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-brand-600/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm border border-brand-400/30 shadow-lg pointer-events-none">
                 {detectedFurniture.length} furniture item{detectedFurniture.length !== 1 ? 's' : ''} detected
-                <span className="ml-1 opacity-70">· Click markers to search</span>
+                <span className="ml-1.5 opacity-80">· Click markers to search</span>
               </div>
             )}
           </div>
