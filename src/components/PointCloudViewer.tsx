@@ -150,6 +150,8 @@ export default function PointCloudViewer({ positions, colors, className = '' }: 
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameRef.current);
       controls.dispose();
+      // Force WebGL context release before disposal to prevent context exhaustion
+      renderer.forceContextLoss();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);

@@ -58,6 +58,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   const furnitureDataRef = useRef<Map<string, PlacedFurniture>>(new Map());
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const mouseRef = useRef<THREE.Vector2>(new THREE.Vector2());
+  const syncFurnitureDataRef = useRef<(id: string) => void>(() => {});
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentLOD, setCurrentLOD] = useState<LODLevel | null>(null);
@@ -142,6 +143,9 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
       notifyFurnitureChange();
     }
   }, [notifyFurnitureChange]);
+
+  // Keep ref updated for use in scene setup effect (avoids dependency changes)
+  syncFurnitureDataRef.current = syncFurnitureData;
 
   // Add furniture to scene
   const addFurniture = useCallback(async (furnitureUrl: string, name?: string): Promise<string> => {
@@ -410,11 +414,11 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
       controls.enabled = !event.value;
     });
 
-    // Sync furniture data when transform ends
+    // Sync furniture data when transform ends (use ref to avoid dependency changes)
     transformControls.addEventListener('objectChange', () => {
       const obj = transformControls.object;
       if (obj?.userData.furnitureId) {
-        syncFurnitureData(obj.userData.furnitureId);
+        syncFurnitureDataRef.current(obj.userData.furnitureId);
       }
     });
 
@@ -462,12 +466,15 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
       cancelAnimationFrame(animationFrameRef.current);
       transformControls.dispose();
       controls.dispose();
+      // Force WebGL context release before disposal to prevent context exhaustion
+      renderer.forceContextLoss();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [syncFurnitureData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save camera state before model swap
   const saveCameraState = useCallback(() => {
