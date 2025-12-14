@@ -436,24 +436,34 @@ class DepthService:
 
             logger.info(f"Running DA3 inference with: model={settings.model_name}, "
                        f"process_res={settings.process_resolution}, "
-                       f"use_ray_pose={settings.use_ray_pose}")
+                       f"use_ray_pose={settings.use_ray_pose}, "
+                       f"memory_optimization=inference_mode")
 
-            # Use DA3's native export for best quality (GLB point cloud only)
-            prediction = self._model.inference(
-                frames,
-                process_res=settings.process_resolution,
-                # Use ray-based pose estimation for 44% better accuracy
-                use_ray_pose=settings.use_ray_pose,
-                # Reference view strategy for multi-view consistency
-                ref_view_strategy="saddle_balanced",
-                # Export settings - GLB point cloud
-                export_dir=str(job_dir),
-                export_format=settings.export_format,
-                # GLB quality parameters
-                conf_thresh_percentile=settings.conf_thresh_percentile,
-                num_max_points=settings.num_max_points,
-                show_cameras=settings.show_cameras,
-            )
+            # Clear CUDA cache before inference to reduce fragmentation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
+            # Use inference_mode for memory optimization
+            # Disables gradient tracking which is not needed for inference
+            # Note: autocast (float16) doesn't help with DA3 - model handles precision internally
+            with torch.inference_mode():
+                # Use DA3's native export for best quality (GLB point cloud only)
+                prediction = self._model.inference(
+                    frames,
+                    process_res=settings.process_resolution,
+                    # Use ray-based pose estimation for 44% better accuracy
+                    use_ray_pose=settings.use_ray_pose,
+                    # Reference view strategy for multi-view consistency
+                    ref_view_strategy="saddle_balanced",
+                    # Export settings - GLB point cloud
+                    export_dir=str(job_dir),
+                    export_format=settings.export_format,
+                    # GLB quality parameters
+                    conf_thresh_percentile=settings.conf_thresh_percentile,
+                    num_max_points=settings.num_max_points,
+                    show_cameras=settings.show_cameras,
+                )
 
             if progress_callback:
                 progress_callback(ProgressUpdate(
@@ -464,11 +474,44 @@ class DepthService:
                     message="Inference complete"
                 ))
 
-            # Extract results
+            # Extract results and move to CPU immediately to free GPU memory
+            # Convert PyTorch tensors to numpy arrays if needed
             depth_maps = prediction.depth  # [N, H, W]
+            if torch.is_tensor(depth_maps):
+                depth_maps = depth_maps.cpu().numpy()
+                prediction.depth = depth_maps  # Update prediction object to use CPU data
+            
             conf_maps = getattr(prediction, 'conf', None)  # [N, H, W] if available
+            if conf_maps is not None and torch.is_tensor(conf_maps):
+                conf_maps = conf_maps.cpu().numpy()
+                prediction.conf = conf_maps  # Update prediction object to use CPU data
+            
             extrinsics = getattr(prediction, 'extrinsics', None)  # [N, 3, 4]
+            if extrinsics is not None:
+                if torch.is_tensor(extrinsics):
+                    extrinsics = extrinsics.cpu().numpy()
+                    prediction.extrinsics = extrinsics  # Update prediction object to use CPU data
+                elif hasattr(extrinsics, 'tolist'):
+                    extrinsics = np.asarray(extrinsics)
+                    prediction.extrinsics = extrinsics
+            
             intrinsics = getattr(prediction, 'intrinsics', None)  # [N, 3, 3]
+            if intrinsics is not None:
+                if torch.is_tensor(intrinsics):
+                    intrinsics = intrinsics.cpu().numpy()
+                    prediction.intrinsics = intrinsics  # Update prediction object to use CPU data
+                elif hasattr(intrinsics, 'tolist'):
+                    intrinsics = np.asarray(intrinsics)
+                    prediction.intrinsics = intrinsics
+            
+            # Move processed_images to CPU if they're tensors (used later for point cloud)
+            processed_images = getattr(prediction, 'processed_images', None)
+            if processed_images is not None and torch.is_tensor(processed_images):
+                prediction.processed_images = processed_images.cpu().numpy()
+            
+            # Clear CUDA cache after moving data to CPU
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             # Depth completion - fill holes in depth maps
             if settings.enable_depth_completion:
