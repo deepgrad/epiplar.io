@@ -109,3 +109,49 @@ class RoomListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+# YOLO Detection schemas
+class BoundingBox(BaseModel):
+    """Normalized bounding box coordinates (0-1)."""
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class PixelBoundingBox(BaseModel):
+    """Pixel-space bounding box coordinates."""
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+
+class Point2D(BaseModel):
+    """2D point with normalized coordinates (0-1)."""
+    x: float
+    y: float
+
+
+class FurnitureDetection(BaseModel):
+    """A single furniture detection result."""
+    class_name: str
+    confidence: float
+    bbox: BoundingBox
+    center: Point2D
+    pixel_bbox: PixelBoundingBox
+
+
+class DetectFurnitureRequest(BaseModel):
+    """Request body for furniture detection."""
+    image_base64: str  # Base64-encoded image (PNG from canvas)
+    confidence_threshold: float = 0.3
+    iou_threshold: float = 0.5
+
+
+class DetectFurnitureResponse(BaseModel):
+    """Response containing detected furniture items."""
+    detections: list[FurnitureDetection]
+    image_width: int
+    image_height: int

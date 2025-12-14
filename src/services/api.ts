@@ -789,3 +789,87 @@ export function getRoomThumbnailUrl(roomId: number): string {
 export function getRoomAssetUrl(roomId: number, filename: string): string {
   return `${API_BASE_URL}/api/rooms/${roomId}/assets/${filename}`;
 }
+
+// ============================================================================
+// YOLO Detection API - Furniture Detection from Screenshots
+// ============================================================================
+
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PixelBoundingBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+export interface FurnitureDetection {
+  class_name: string;
+  confidence: number;
+  bbox: BoundingBox;
+  center: Point2D;
+  pixel_bbox: PixelBoundingBox;
+}
+
+export interface DetectFurnitureRequest {
+  image_base64: string;
+  confidence_threshold?: number;
+  iou_threshold?: number;
+}
+
+export interface DetectFurnitureResponse {
+  detections: FurnitureDetection[];
+  image_width: number;
+  image_height: number;
+}
+
+/**
+ * Detect furniture items in an image (screenshot from 3D viewer)
+ */
+export async function detectFurniture(
+  imageBase64: string,
+  confidenceThreshold: number = 0.3,
+  iouThreshold: number = 0.5
+): Promise<DetectFurnitureResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/yolo/detect`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      image_base64: imageBase64,
+      confidence_threshold: confidenceThreshold,
+      iou_threshold: iouThreshold,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Detection failed' }));
+    throw new Error(error.detail || 'Failed to detect furniture');
+  }
+
+  return response.json();
+}
+
+/**
+ * Check YOLO service status
+ */
+export async function getYoloStatus(): Promise<{ model_loaded: boolean; device: string | null }> {
+  const response = await fetch(`${API_BASE_URL}/api/yolo/status`);
+
+  if (!response.ok) {
+    throw new Error('Failed to get YOLO status');
+  }
+
+  return response.json();
+}

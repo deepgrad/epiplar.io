@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { LODAssetCollection, apiUrl } from '../services/api';
+import { LODAssetCollection, apiUrl, detectFurniture, FurnitureDetection } from '../services/api';
 
 type LODLevel = 'preview' | 'medium' | 'full';
 
@@ -35,10 +35,24 @@ interface ModelViewerProps {
   editMode?: boolean; // Enable furniture editing mode
   onFurnitureChange?: (furniture: PlacedFurniture[]) => void;
   onSelectionChange?: (selectedId: string | null) => void;
+  // Furniture detection settings
+  enableFurnitureDetection?: boolean; // Enable YOLO-based furniture detection
+  detectionDebounceMs?: number; // Debounce delay after scenery change stops (default: 800ms)
+  onFurnitureDetected?: (detections: FurnitureDetection[]) => void; // Callback when furniture is detected
 }
 
 const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelViewer(
-  { url, lodAssets, className = '', editMode = false, onFurnitureChange, onSelectionChange },
+  {
+    url,
+    lodAssets,
+    className = '',
+    editMode = false,
+    onFurnitureChange,
+    onSelectionChange,
+    enableFurnitureDetection = false,
+    detectionDebounceMs = 800,
+    onFurnitureDetected,
+  },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -67,6 +81,12 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
   const [furnitureCount, setFurnitureCount] = useState(0); // Trigger re-renders
+
+  // Furniture detection state (YOLO-based)
+  const [detectedFurniture, setDetectedFurniture] = useState<FurnitureDetection[]>([]);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const detectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUserInteractingRef = useRef(false); // Track if user is actively dragging/zooming
 
   // Create grid texture for background
   const createGridTexture = useCallback(() => {
@@ -325,6 +345,97 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     }
   }, [editMode, selectedFurnitureId, removeFurniture, selectFurniture]);
 
+  // ============================================================================
+  // Furniture Detection (YOLO-based) - Scenery Change Detection
+  // ============================================================================
+
+  // Capture screenshot and run furniture detection
+  const runFurnitureDetection = useCallback(async () => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+      return;
+    }
+
+    // Don't run detection if user is actively interacting
+    if (isUserInteractingRef.current) {
+      return;
+    }
+
+    try {
+      setIsDetecting(true);
+
+      // Force a render to ensure we capture the current state
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+
+      // Capture screenshot from WebGL canvas
+      const canvas = rendererRef.current.domElement;
+      const imageBase64 = canvas.toDataURL('image/png');
+
+      // Call YOLO detection API
+      const response = await detectFurniture(imageBase64, 0.3, 0.5);
+
+      // Update state with detections (only if user isn't interacting)
+      if (!isUserInteractingRef.current) {
+        setDetectedFurniture(response.detections);
+        onFurnitureDetected?.(response.detections);
+      }
+    } catch (error) {
+      console.error('Furniture detection failed:', error);
+      // Clear detections on error
+      setDetectedFurniture([]);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [onFurnitureDetected]);
+
+  // Handle scenery change start (user starts dragging/zooming)
+  const handleSceneryChangeStart = useCallback(() => {
+    isUserInteractingRef.current = true;
+
+    // Cancel any pending detection
+    if (detectionTimeoutRef.current) {
+      clearTimeout(detectionTimeoutRef.current);
+      detectionTimeoutRef.current = null;
+    }
+
+    // Clear existing detections when user starts interacting
+    setDetectedFurniture([]);
+  }, []);
+
+  // Handle scenery change end (user stops dragging/zooming)
+  const handleSceneryChangeEnd = useCallback(() => {
+    isUserInteractingRef.current = false;
+
+    // Cancel any pending detection
+    if (detectionTimeoutRef.current) {
+      clearTimeout(detectionTimeoutRef.current);
+    }
+
+    // Start debounce timer - detection runs after user stops interacting
+    detectionTimeoutRef.current = setTimeout(() => {
+      runFurnitureDetection();
+    }, detectionDebounceMs);
+  }, [detectionDebounceMs, runFurnitureDetection]);
+
+  // Cleanup detection timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (detectionTimeoutRef.current) {
+        clearTimeout(detectionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Run initial detection when detection is enabled and model is loaded
+  useEffect(() => {
+    if (enableFurnitureDetection && modelRef.current && !isDetecting) {
+      // Small delay to ensure the scene is fully rendered
+      const timer = setTimeout(() => {
+        runFurnitureDetection();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [enableFurnitureDetection, currentLOD, runFurnitureDetection, isDetecting]);
+
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
     addFurniture,
@@ -422,6 +533,23 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
       }
     });
 
+    // Furniture detection: Listen for scenery changes (drag/zoom start and end)
+    // These handlers are stored in refs to avoid recreating on every render
+    const onControlsStart = () => {
+      // Scenery change started - user is dragging or zooming
+      handleSceneryChangeStart();
+    };
+    const onControlsEnd = () => {
+      // Scenery change ended - user stopped dragging or zooming
+      handleSceneryChangeEnd();
+    };
+
+    // Only attach listeners if furniture detection is enabled
+    if (enableFurnitureDetection) {
+      controls.addEventListener('start', onControlsStart);
+      controls.addEventListener('end', onControlsEnd);
+    }
+
     // Lighting for meshes (point clouds ignore it)
     const ambient = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambient);
@@ -464,6 +592,11 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     return () => {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameRef.current);
+      // Remove furniture detection listeners
+      if (enableFurnitureDetection) {
+        controls.removeEventListener('start', onControlsStart);
+        controls.removeEventListener('end', onControlsEnd);
+      }
       transformControls.dispose();
       controls.dispose();
       // Force WebGL context release before disposal to prevent context exhaustion
@@ -474,7 +607,7 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [enableFurnitureDetection]);
 
   // Save camera state before model swap
   const saveCameraState = useCallback(() => {
@@ -877,6 +1010,58 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
                   (1 selected)
                 </span>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Furniture Detection Overlay - Static markers on detected furniture */}
+      {enableFurnitureDetection && (
+        <div
+          className="absolute inset-0 pointer-events-none overflow-hidden"
+          style={{ borderRadius: 'inherit' }}
+        >
+          {/* Detection loading indicator */}
+          {isDetecting && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-sky-500/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm flex items-center gap-2">
+              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Detecting furniture...
+            </div>
+          )}
+
+          {/* Detection markers - Static circles on furniture centers */}
+          {detectedFurniture.map((detection, index) => {
+            // Position based on normalized center coordinates (0-1)
+            const left = `${detection.center.x * 100}%`;
+            const top = `${detection.center.y * 100}%`;
+
+            return (
+              <div
+                key={`detection-${index}-${detection.class_name}`}
+                className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                style={{ left, top }}
+              >
+                {/* Outer pulse ring */}
+                <div className="absolute inset-0 w-8 h-8 -m-4 rounded-full border-2 border-sky-400/50 animate-ping" />
+
+                {/* Inner marker circle */}
+                <div className="relative w-6 h-6 -m-3 rounded-full bg-sky-500/80 border-2 border-white shadow-lg flex items-center justify-center">
+                  <div className="w-2 h-2 rounded-full bg-white" />
+                </div>
+
+                {/* Label with class name and confidence */}
+                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded backdrop-blur-sm">
+                  <span className="font-medium capitalize">{detection.class_name}</span>
+                  <span className="ml-1 opacity-70">{Math.round(detection.confidence * 100)}%</span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Detection count badge */}
+          {detectedFurniture.length > 0 && !isDetecting && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-sky-500/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm">
+              {detectedFurniture.length} furniture item{detectedFurniture.length !== 1 ? 's' : ''} detected
             </div>
           )}
         </div>
