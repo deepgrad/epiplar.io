@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { getRooms, deleteRoom, Room, API_BASE_URL } from '../services/api'
+import { getRooms, deleteRoom, Room } from '../services/api'
 import RoomCard from '../components/RoomCard'
 
 export default function MyRooms() {
