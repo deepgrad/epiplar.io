@@ -898,7 +898,7 @@ export interface FurnitureReplacementResult {
 export async function replaceFurnitureInImage(
   request: FurnitureReplacementRequest
 ): Promise<FurnitureReplacementResult> {
-  const response = await fetch(`${API_BASE_URL}/api/furniture/replace`, {
+  const response = await fetch(`${API_BASE_URL}/api/image/replace-furniture`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
