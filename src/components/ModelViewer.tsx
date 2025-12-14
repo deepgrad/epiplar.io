@@ -397,8 +397,14 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     const transformControls = new TransformControls(camera, renderer.domElement);
     transformControls.setMode('translate');
     transformControls.setSize(0.75);
-    // TransformControls extends Object3D, cast to add to scene
-    scene.add(transformControls as unknown as THREE.Object3D);
+    // TransformControls extends Object3D in Three.js
+    // Note: In some Three.js versions, TransformControls returns itself from getHelper()
+    // We need to add the controls directly - it IS an Object3D
+    if (transformControls instanceof THREE.Object3D) {
+      scene.add(transformControls);
+    } else {
+      console.warn('TransformControls is not an Object3D, skipping scene.add');
+    }
     transformControlsRef.current = transformControls;
 
     // Disable orbit controls while transforming
@@ -498,10 +504,94 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
     setLoadError(null);
 
     return new Promise((resolve, reject) => {
+      console.log(`[ModelViewer] Loading model: ${modelUrl}`);
       loaderRef.current!.load(
         modelUrl,
         (gltf) => {
-          const root = gltf.scene;
+          console.log('[ModelViewer] GLTF loaded:', {
+            hasScene: !!gltf.scene,
+            scenesCount: gltf.scenes?.length ?? 0,
+            animationsCount: gltf.animations?.length ?? 0,
+          });
+
+          // Get scene root - handle cases where gltf.scene might be undefined or empty
+          let root: THREE.Object3D | undefined = gltf.scene;
+
+          // If scene is undefined, try to create a group from all nodes
+          if (!root && gltf.scenes && gltf.scenes.length > 0) {
+            root = gltf.scenes[0];
+          }
+
+          // If still no root, create a group and add all top-level objects
+          if (!root) {
+            console.warn('[ModelViewer] GLTF has no scene, attempting to extract nodes');
+            root = new THREE.Group();
+
+            // Method 1: Try to get objects from the parser associations
+            if (gltf.parser) {
+              const associations = gltf.parser.associations;
+              if (associations) {
+                associations.forEach((_value: unknown, key: unknown) => {
+                  if (key instanceof THREE.Object3D && key.parent === null) {
+                    root!.add(key);
+                  }
+                });
+              }
+            }
+
+            // Method 2: If still empty, try to extract from nodes array
+            if (root.children.length === 0) {
+              // Some GLB files have nodes directly accessible
+              const nodes = (gltf as unknown as { nodes?: THREE.Object3D[] }).nodes;
+              if (nodes && Array.isArray(nodes)) {
+                nodes.forEach((node) => {
+                  if (node instanceof THREE.Object3D && !node.parent) {
+                    root!.add(node);
+                  }
+                });
+              }
+            }
+
+            console.log('[ModelViewer] Created root group with children:', root.children.length);
+          }
+
+          // Validate root is a proper Object3D
+          if (!root || !(root instanceof THREE.Object3D)) {
+            console.error('[ModelViewer] Failed to get valid scene from GLTF:', gltf);
+            const message = 'Invalid 3D model format';
+            setLoadError(message);
+            setLoadingLOD(null);
+            reject(new Error(message));
+            return;
+          }
+
+          console.log('[ModelViewer] Scene root validated:', {
+            type: root.type,
+            childrenCount: root.children.length,
+            isGroup: root instanceof THREE.Group,
+          });
+
+          // Log children types for debugging and filter out invalid objects
+          const invalidChildren: THREE.Object3D[] = [];
+          root.traverse((child) => {
+            console.log('[ModelViewer] Scene child:', child.type, child.name || '(unnamed)');
+            // Check if child is a valid Object3D
+            if (child !== root && !(child instanceof THREE.Object3D)) {
+              console.warn('[ModelViewer] Invalid child found:', child);
+              invalidChildren.push(child);
+            }
+          });
+
+          // Remove invalid children
+          invalidChildren.forEach((invalid) => {
+            if (invalid.parent) {
+              invalid.parent.remove(invalid);
+            }
+          });
+
+          if (invalidChildren.length > 0) {
+            console.warn(`[ModelViewer] Removed ${invalidChildren.length} invalid children`);
+          }
 
           // Save camera state if replacing existing model
           if (modelRef.current && !isFirstLoad) {
@@ -520,7 +610,19 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
             });
           }
 
-          sceneRef.current!.add(root);
+          // Add root to scene with error handling
+          try {
+            console.log('[ModelViewer] Adding root to scene...');
+            sceneRef.current!.add(root);
+            console.log('[ModelViewer] Root added successfully');
+          } catch (addError) {
+            console.error('[ModelViewer] Failed to add root to scene:', addError, root);
+            const message = 'Failed to display 3D model';
+            setLoadError(message);
+            setLoadingLOD(null);
+            reject(new Error(message));
+            return;
+          }
           modelRef.current = root;
 
           // Center model + fit camera to fill screen (only for first load)
@@ -655,8 +757,10 @@ const ModelViewer = forwardRef<ModelViewerRef, ModelViewerProps>(function ModelV
   useEffect(() => {
     if (transformControlsRef.current) {
       transformControlsRef.current.enabled = editMode;
-      // Cast to Object3D to access visible property
-      (transformControlsRef.current as unknown as THREE.Object3D).visible = editMode && selectedFurnitureId !== null;
+      // TransformControls extends Object3D at runtime, but @types/three doesn't reflect this
+      // The visible property exists at runtime on the prototype chain
+      const tc = transformControlsRef.current as unknown as { visible: boolean };
+      tc.visible = editMode && selectedFurnitureId !== null;
     }
   }, [editMode, selectedFurnitureId]);
 
