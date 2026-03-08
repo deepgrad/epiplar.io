@@ -8,15 +8,19 @@
   <strong>Transform any room with AI-powered 3D reconstruction and intelligent furniture replacement</strong>
 </p>
 
+---
+
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=hBA3fvoU_DI">Demo</a>
+  <a href="https://www.youtube.com/watch?v=hBA3fvoU_DI" align="center">
+  <img height="285" alt="image" src="https://github.com/user-attachments/assets/098747f0-ddef-4616-bbfe-33d1a10299f0" />
+  <p align="center">Click on the image above for preview (YT link)</p>
+  </a>
 </p>
 
----
 
 ## Overview
 
-**Interia** is a full-stack AI application that transforms video recordings of rooms into interactive 3D point cloud visualizations. Upload a video of your room, and our AI pipeline powered by **Depth Anything V3** reconstructs it in 3D, detects furniture using **YOLOv8**, and enables intelligent furniture replacement with **Google Gemini** image generation.
+**Interia** is a full-stack AI application that transforms video recordings of rooms into interactive 3D point cloud visualizations. Upload a video of your room, and our AI pipeline powered by **Depth Anything V3** and enhnaced with diffusion, reconstructs it in 3D, detects furniture using **YOLOv8**, and enables intelligent furniture replacement with **Google Gemini** image generation.
 
 ## Features
 
